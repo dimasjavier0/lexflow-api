@@ -37,3 +37,17 @@ export async function updateProgress(request: Request, response: Response): Prom
 
   response.status(200).json({ progress });
 }
+
+export async function listProgress(request: Request, response: Response): Promise<void> {
+  if (!request.authUser) {
+    response.status(401).json({ message: "Authentication required" });
+    return;
+  }
+
+  const progress = await prisma.userWordProgress.findMany({
+    where: { userId: request.authUser.id },
+    select: { wordId: true, status: true, updatedAt: true },
+  });
+
+  response.status(200).json({ progress });
+}

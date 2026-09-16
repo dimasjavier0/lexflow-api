@@ -36,3 +36,6 @@ Los cambios relevantes del proyecto se registran aquí.
 - PostgreSQL local se expone por el puerto `5433` para evitar una colisión de autenticación detectada en `5432`.
 - Se creó y aplicó la migración inicial de Prisma contra PostgreSQL en Docker.
 - Se añadió un seed idempotente con la colección A1 `food` y tres palabras de ejemplo.
+- Se completó el flujo de aprendizaje con progreso persistente por usuario y palabra.
+- Se añadió panel admin para colecciones, palabras, publicación y recursos multimedia por URL.
+- Se añadió una PWA básica con manifest y service worker.

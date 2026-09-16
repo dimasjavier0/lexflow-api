@@ -33,3 +33,29 @@ npm run db:seed --workspace=@lexflow/api
 ```
 
 La migración inicial queda versionada en `apps/api/prisma/migrations/`. El seed crea una colección A1 de alimentos y es idempotente.
+
+## Desarrollo
+
+En terminales separadas:
+
+```bash
+npm run dev:api
+npm run dev:web
+```
+
+URLs locales:
+
+- Web: `http://localhost:5173`
+- API: `http://localhost:3000/health`
+- Prisma Studio: `npm run db:studio --workspace=@lexflow/api`
+
+## Funcionalidades disponibles
+
+- Login con Google mediante Supabase Auth.
+- Validación JWT en la API y sincronización de usuarios locales.
+- Colecciones y palabras publicadas desde el panel admin.
+- Progreso por palabra: querer aprender, no interesar y aprendida.
+- Recursos manuales de imagen, audio y video mediante URL.
+- Manifest y service worker básicos para instalación como PWA.
+
+El panel admin requiere que el usuario tenga `role = 'ADMIN'` en la base PostgreSQL local.
