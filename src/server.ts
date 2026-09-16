@@ -4,6 +4,7 @@ import express from "express";
 import { getHealth } from "./controllers/health.controller.js";
 import { getMe } from "./controllers/me.controller.js";
 import { getCollection, listCollections } from "./controllers/collections.controller.js";
+import { updateProgress } from "./controllers/progress.controller.js";
 import { errorHandler } from "./middlewares/error-handler.js";
 import { requireAuth } from "./middlewares/require-auth.js";
 
@@ -16,6 +17,7 @@ app.get("/health", getHealth);
 app.get("/collections", listCollections);
 app.get("/collections/:slug", getCollection);
 app.get("/me", requireAuth, getMe);
+app.put("/progress/:wordId", requireAuth, updateProgress);
 app.use(errorHandler);
 
 app.listen(port, () => console.info(`LexFlow API listening on port ${port}`));
