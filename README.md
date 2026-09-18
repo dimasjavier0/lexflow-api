@@ -56,6 +56,9 @@ URLs locales:
 - Colecciones y palabras publicadas desde el panel admin.
 - Progreso por palabra: querer aprender, no interesar y aprendida.
 - Recursos manuales de imagen, audio y video mediante URL.
+- Dashboard admin con tarjetas de acciones, colecciones expandibles y carga de imágenes por arrastre.
 - Manifest y service worker básicos para instalación como PWA.
+
+Las imágenes arrastradas se guardan localmente en `apps/api/uploads/` y su URL queda registrada en PostgreSQL. Este almacenamiento está pensado para desarrollo local; producción deberá migrarlo a Supabase Storage o a un bucket S3-compatible.
 
 El panel admin requiere que el usuario tenga `role = 'ADMIN'` en la base PostgreSQL local.

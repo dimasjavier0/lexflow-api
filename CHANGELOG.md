@@ -39,3 +39,5 @@ Los cambios relevantes del proyecto se registran aquí.
 - Se completó el flujo de aprendizaje con progreso persistente por usuario y palabra.
 - Se añadió panel admin para colecciones, palabras, publicación y recursos multimedia por URL.
 - Se añadió una PWA básica con manifest y service worker.
+- Se rediseñó el panel admin como dashboard de acciones con colecciones y palabras expandibles.
+- Se añadió carga de imágenes por arrastre, persistida en disco local y registrada en PostgreSQL.

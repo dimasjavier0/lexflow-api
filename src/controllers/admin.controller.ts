@@ -176,3 +176,29 @@ export async function createAdminMedia(request: Request, response: Response): Pr
 
   response.status(201).json({ resource });
 }
+
+export async function uploadAdminImage(request: Request, response: Response): Promise<void> {
+  const wordId = request.params.wordId;
+  if (typeof wordId !== "string" || !uuidPattern.test(wordId) || !request.file) {
+    response.status(400).json({ message: "An image file is required" });
+    return;
+  }
+
+  const word = await prisma.word.findUnique({ where: { id: wordId }, select: { id: true } });
+  if (!word) {
+    response.status(404).json({ message: "Word not found" });
+    return;
+  }
+
+  const apiUrl = `${request.protocol}://${request.get("host")}`;
+  const image = await prisma.image.create({
+    data: {
+      wordId,
+      url: `${apiUrl}/uploads/${request.file.filename}`,
+      source: "local-upload",
+      metadata: { originalName: request.file.originalname, mimeType: request.file.mimetype },
+    },
+  });
+
+  response.status(201).json({ image });
+}
