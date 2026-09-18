@@ -57,6 +57,7 @@ URLs locales:
 - Progreso por palabra: querer aprender, no interesar y aprendida.
 - Recursos manuales de imagen, audio y video mediante URL.
 - Dashboard admin con tarjetas de acciones, colecciones expandibles y carga de imágenes por arrastre.
+- Editor reutilizable de palabras para crear y editar término, traducción, nivel, enlace de imagen y archivo arrastrado.
 - Manifest y service worker básicos para instalación como PWA.
 
 Las imágenes arrastradas se guardan localmente en `apps/api/uploads/` y su URL queda registrada en PostgreSQL. Este almacenamiento está pensado para desarrollo local; producción deberá migrarlo a Supabase Storage o a un bucket S3-compatible.

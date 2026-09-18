@@ -41,3 +41,4 @@ Los cambios relevantes del proyecto se registran aquí.
 - Se añadió una PWA básica con manifest y service worker.
 - Se rediseñó el panel admin como dashboard de acciones con colecciones y palabras expandibles.
 - Se añadió carga de imágenes por arrastre, persistida en disco local y registrada en PostgreSQL.
+- El dashboard admin ahora usa modales para acciones y un editor de palabra reutilizable dentro de la biblioteca.

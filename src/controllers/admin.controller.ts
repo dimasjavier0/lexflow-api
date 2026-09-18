@@ -153,6 +153,22 @@ export async function updateWordPublication(request: Request, response: Response
   response.status(200).json({ word });
 }
 
+export async function updateAdminWord(request: Request, response: Response): Promise<void> {
+  const wordId = request.params.wordId;
+  const parsed = wordSchema.partial().safeParse(request.body);
+  if (typeof wordId !== "string" || !uuidPattern.test(wordId) || !parsed.success) {
+    response.status(400).json({ message: "Invalid word data", issues: parsed.success ? undefined : parsed.error.issues });
+    return;
+  }
+
+  const word = await prisma.word.update({
+    where: { id: wordId },
+    data: parsed.data,
+    select: { id: true, term: true, translationEs: true, level: true, isPublished: true },
+  });
+  response.status(200).json({ word });
+}
+
 export async function createAdminMedia(request: Request, response: Response): Promise<void> {
   const wordId = request.params.wordId;
   const parsed = mediaSchema.safeParse(request.body);
