@@ -67,7 +67,17 @@ export async function listAdminWords(request: Request, response: Response): Prom
     orderBy: { position: "asc" },
     select: {
       position: true,
-      word: { select: { id: true, term: true, translationEs: true, level: true, isPublished: true } },
+      word: {
+        select: {
+          id: true,
+          term: true,
+          translationEs: true,
+          level: true,
+          isPublished: true,
+          images: { orderBy: { position: "asc" }, select: { id: true, url: true } },
+          videos: { orderBy: { position: "asc" }, select: { id: true, url: true } },
+        },
+      },
     },
   });
 
@@ -123,7 +133,20 @@ export async function createAdminWord(request: Request, response: Response): Pro
   });
   const relation = await prisma.collectionWord.create({
     data: { collectionId, wordId: word.id, position: (lastWord?.position ?? 0) + 1 },
-    select: { position: true, word: { select: { id: true, term: true, translationEs: true, level: true, isPublished: true } } },
+    select: {
+      position: true,
+      word: {
+        select: {
+          id: true,
+          term: true,
+          translationEs: true,
+          level: true,
+          isPublished: true,
+          images: { orderBy: { position: "asc" }, select: { id: true, url: true } },
+          videos: { orderBy: { position: "asc" }, select: { id: true, url: true } },
+        },
+      },
+    },
   });
 
   response.status(201).json({ word: relation });
