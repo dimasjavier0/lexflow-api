@@ -16,6 +16,10 @@ const wordSchema = z.object({
   isPublished: z.boolean().optional(),
 });
 
+const bulkWordsSchema = z.object({
+  terms: z.array(z.string().trim().min(1).max(100)).min(1).max(200),
+});
+
 const publicationSchema = z.object({ isPublished: z.boolean() });
 const mediaSchema = z.object({
   type: z.enum(["image", "audio", "video"]),
@@ -150,6 +154,59 @@ export async function createAdminWord(request: Request, response: Response): Pro
   });
 
   response.status(201).json({ word: relation });
+}
+
+export async function createAdminWordsBulk(request: Request, response: Response): Promise<void> {
+  const collectionId = request.params.collectionId;
+  if (typeof collectionId !== "string" || !uuidPattern.test(collectionId)) {
+    response.status(400).json({ message: "Invalid collection id" });
+    return;
+  }
+
+  const parsed = bulkWordsSchema.safeParse(request.body);
+  if (!parsed.success) {
+    response.status(400).json({ message: "Invalid word list", issues: parsed.error.issues });
+    return;
+  }
+
+  const collection = await prisma.collection.findUnique({ where: { id: collectionId }, select: { id: true } });
+  if (!collection) {
+    response.status(404).json({ message: "Collection not found" });
+    return;
+  }
+
+  const terms = [...new Set(parsed.data.terms.map((term) => term.trim()).filter(Boolean))];
+  const result = await prisma.$transaction(async (transaction) => {
+    const lastWord = await transaction.collectionWord.findFirst({
+      where: { collectionId },
+      orderBy: { position: "desc" },
+      select: { position: true },
+    });
+    let position = lastWord?.position ?? 0;
+    const words: Array<{ id: string; term: string; translationEs: string; level: string; isPublished: boolean }> = [];
+    let skipped = 0;
+
+    for (const term of terms) {
+      const word = await transaction.word.upsert({
+        where: { term },
+        update: {},
+        create: { term, translationEs: term, level: "A1", isPublished: false },
+        select: { id: true, term: true, translationEs: true, level: true, isPublished: true },
+      });
+      const existing = await transaction.collectionWord.findUnique({ where: { collectionId_wordId: { collectionId, wordId: word.id } } });
+      if (existing) {
+        skipped += 1;
+        continue;
+      }
+      position += 1;
+      await transaction.collectionWord.create({ data: { collectionId, wordId: word.id, position } });
+      words.push(word);
+    }
+
+    return { words, skipped, received: terms.length };
+  });
+
+  response.status(201).json(result);
 }
 
 export async function updateCollectionPublication(request: Request, response: Response): Promise<void> {
