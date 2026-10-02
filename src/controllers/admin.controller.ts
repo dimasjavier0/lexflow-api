@@ -322,6 +322,23 @@ export async function deleteAdminImage(request: Request, response: Response): Pr
   response.status(204).send();
 }
 
+export async function deleteAdminVideo(request: Request, response: Response): Promise<void> {
+  const videoId = request.params.videoId;
+  if (typeof videoId !== "string" || !uuidPattern.test(videoId)) {
+    response.status(400).json({ message: "Invalid video id" });
+    return;
+  }
+
+  const video = await prisma.video.findUnique({ where: { id: videoId }, select: { id: true } });
+  if (!video) {
+    response.status(404).json({ message: "Video not found" });
+    return;
+  }
+
+  await prisma.video.delete({ where: { id: videoId } });
+  response.status(204).send();
+}
+
 export async function updateAdminCollection(request: Request, response: Response): Promise<void> {
   const collectionId = request.params.collectionId;
   const parsed = editCollectionSchema.safeParse(request.body);
