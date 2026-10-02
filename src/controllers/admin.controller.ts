@@ -6,7 +6,13 @@ const collectionSchema = z.object({
   name: z.string().trim().min(1).max(100),
   slug: z.string().trim().min(1).max(100).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
   description: z.string().trim().max(500).optional(),
+  imageUrl: z.string().url().nullable().optional(),
   isPublished: z.boolean().optional(),
+});
+
+const editCollectionSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+  imageUrl: z.string().url().nullable(),
 });
 
 const wordSchema = z.object({
@@ -297,4 +303,16 @@ export async function uploadAdminImage(request: Request, response: Response): Pr
   });
 
   response.status(201).json({ image });
+}
+
+export async function updateAdminCollection(request: Request, response: Response): Promise<void> {
+  const collectionId = request.params.collectionId;
+  const parsed = editCollectionSchema.safeParse(request.body);
+  if (typeof collectionId !== "string" || !uuidPattern.test(collectionId) || !parsed.success) {
+    response.status(400).json({ message: "Invalid collection data", issues: parsed.success ? undefined : parsed.error.issues });
+    return;
+  }
+
+  const collection = await prisma.collection.update({ where: { id: collectionId }, data: parsed.data, include: { _count: { select: { words: true } } } });
+  response.status(200).json({ collection });
 }

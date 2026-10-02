@@ -10,6 +10,7 @@ export async function listCollections(_request: Request, response: Response): Pr
       name: true,
       slug: true,
       description: true,
+      imageUrl: true,
       _count: { select: { words: true } },
     },
   });
@@ -32,6 +33,7 @@ export async function getCollection(request: Request, response: Response): Promi
       name: true,
       slug: true,
       description: true,
+      imageUrl: true,
       words: {
         orderBy: { position: "asc" },
         select: {
