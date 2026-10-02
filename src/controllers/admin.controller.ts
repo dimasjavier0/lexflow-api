@@ -305,6 +305,23 @@ export async function uploadAdminImage(request: Request, response: Response): Pr
   response.status(201).json({ image });
 }
 
+export async function deleteAdminImage(request: Request, response: Response): Promise<void> {
+  const imageId = request.params.imageId;
+  if (typeof imageId !== "string" || !uuidPattern.test(imageId)) {
+    response.status(400).json({ message: "Invalid image id" });
+    return;
+  }
+
+  const image = await prisma.image.findUnique({ where: { id: imageId }, select: { id: true } });
+  if (!image) {
+    response.status(404).json({ message: "Image not found" });
+    return;
+  }
+
+  await prisma.image.delete({ where: { id: imageId } });
+  response.status(204).send();
+}
+
 export async function updateAdminCollection(request: Request, response: Response): Promise<void> {
   const collectionId = request.params.collectionId;
   const parsed = editCollectionSchema.safeParse(request.body);
