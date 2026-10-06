@@ -63,3 +63,15 @@ URLs locales:
 Las imágenes arrastradas se guardan localmente en `apps/api/uploads/` y su URL queda registrada en PostgreSQL. Este almacenamiento está pensado para desarrollo local; producción deberá migrarlo a Supabase Storage o a un bucket S3-compatible.
 
 El panel admin requiere que el usuario tenga `role = 'ADMIN'` en la base PostgreSQL local.
+
+## Pronunciación local
+
+LexFlow puede generar pronunciaciones gratuitas con Piper TTS. Piper y las voces descargadas localmente quedan en el entorno Python y en `apps/api/models/piper/`. Configura en el `.env` de la raíz:
+
+```env
+PIPER_PATH="C:/Users/NAMEUSER/.pyenv/pyenv-win/versions/3.12.4/Scripts/piper.exe"
+PIPER_VOICE_MODEL_US="apps/api/models/piper/en_US-amy-medium.onnx"
+PIPER_VOICE_MODEL_UK="apps/api/models/piper/en_GB-alan-medium.onnx"
+```
+
+Después de guardar una palabra desde el panel admin, abre su editor, elige el acento y pulsa `Generar pronunciación`. El audio se guarda en la tabla `Audio` y queda disponible para los estudiantes.

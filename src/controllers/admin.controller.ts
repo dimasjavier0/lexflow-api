@@ -1,6 +1,15 @@
 import type { Request, Response } from "express";
+import { spawn } from "node:child_process";
+import fs from "node:fs/promises";
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { once } from "node:events";
+import dotenv from "dotenv";
 import { z } from "zod";
 import { prisma } from "../db/prisma.js";
+import { uploadDirectory } from "../middleware/image-upload.js";
+
+dotenv.config({ path: path.resolve(process.cwd(), ".env"), override: true });
 
 const collectionSchema = z.object({
   name: z.string().trim().min(1).max(100),
@@ -19,11 +28,23 @@ const wordSchema = z.object({
   term: z.string().trim().min(1).max(100),
   translationEs: z.string().trim().min(1).max(200),
   level: z.enum(["A1", "A2", "B1", "B2", "C1", "C2"]).default("A1"),
+  images: z.array(z.object({
+    url: z.string().url(),
+    attribution: z.string().trim().max(300).optional(),
+    metadata: z.record(z.string(), z.unknown()).optional(),
+  })).max(4).optional(),
   isPublished: z.boolean().optional(),
 });
 
+const pixabaySearchSchema = z.object({
+  q: z.string().trim().min(1).max(100),
+  page: z.coerce.number().int().min(1).max(125).default(1),
+});
+
 const bulkWordsSchema = z.object({
-  terms: z.array(z.string().trim().min(1).max(100)).min(1).max(200),
+  words: z.array(z.object({ term: z.string().trim().min(1).max(100), translationEs: z.string().trim().min(1).max(200) })).min(1).max(50),
+  collectionName: z.string().trim().min(1).max(100).optional(),
+  collectionSlug: z.string().trim().min(1).max(100).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).optional(),
 });
 
 const publicationSchema = z.object({ isPublished: z.boolean() });
@@ -35,8 +56,35 @@ const mediaSchema = z.object({
   license: z.string().trim().max(200).optional(),
   attribution: z.string().trim().max(300).optional(),
 });
+const generateAudioSchema = z.object({
+  accent: z.enum(["US", "UK"]).default("US"),
+});
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+async function translateTerm(term: string): Promise<string> {
+  try {
+    const response = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(term)}&langpair=en|es`);
+    const body = await response.json() as { responseData?: { translatedText?: string } };
+    return body.responseData?.translatedText?.trim() || term;
+  } catch {
+    return term;
+  }
+}
+
+async function searchPixabayImages(term: string): Promise<Array<{ id: number; url: string; pageUrl: string; tags: string; user: string }>> {
+  const apiKey = process.env.PIXABAY_API_KEY;
+  if (!apiKey) return [];
+  const params = new URLSearchParams({ key: apiKey, q: term, lang: "en", image_type: "photo", orientation: "horizontal", safesearch: "true", per_page: "2", page: "1" });
+  try {
+    const response = await fetch(`https://pixabay.com/api/?${params.toString()}`);
+    if (!response.ok) return [];
+    const body = await response.json() as { hits?: Array<{ id: number; webformatURL: string; pageURL: string; tags: string; user: string }> };
+    return (body.hits ?? []).map((image) => ({ id: image.id, url: image.webformatURL, pageUrl: image.pageURL, tags: image.tags, user: image.user }));
+  } catch {
+    return [];
+  }
+}
 
 export async function listAdminCollections(_request: Request, response: Response): Promise<void> {
   const collections = await prisma.collection.findMany({
@@ -44,6 +92,33 @@ export async function listAdminCollections(_request: Request, response: Response
     include: { _count: { select: { words: true } } },
   });
   response.status(200).json({ collections });
+}
+
+export async function searchAdminPixabay(request: Request, response: Response): Promise<void> {
+  const parsed = pixabaySearchSchema.safeParse(request.query);
+  if (!parsed.success) {
+    response.status(400).json({ message: "Invalid Pixabay search" });
+    return;
+  }
+
+  const apiKey = process.env.PIXABAY_API_KEY;
+  if (!apiKey) {
+    response.status(503).json({ message: "Pixabay is not configured" });
+    return;
+  }
+
+  const params = new URLSearchParams({ key: apiKey, q: parsed.data.q, lang: "en", image_type: "photo", orientation: "horizontal", safesearch: "true", per_page: "4", page: String(parsed.data.page) });
+  const pixabayResponse = await fetch(`https://pixabay.com/api/?${params.toString()}`);
+  if (!pixabayResponse.ok) {
+    response.status(502).json({ message: "Pixabay search failed" });
+    return;
+  }
+
+  const body = await pixabayResponse.json() as { totalHits?: number; hits?: Array<{ id: number; previewURL: string; webformatURL: string; pageURL: string; tags: string; user: string }> };
+  response.status(200).json({
+    totalHits: body.totalHits ?? 0,
+    images: (body.hits ?? []).map((image) => ({ id: image.id, previewUrl: image.previewURL, url: image.webformatURL, pageUrl: image.pageURL, tags: image.tags, user: image.user })),
+  });
 }
 
 export async function createAdminCollection(request: Request, response: Response): Promise<void> {
@@ -85,6 +160,7 @@ export async function listAdminWords(request: Request, response: Response): Prom
           level: true,
           isPublished: true,
           images: { orderBy: { position: "asc" }, select: { id: true, url: true } },
+          audios: { orderBy: { position: "asc" }, select: { id: true, url: true, voice: true, accent: true, provider: true } },
           videos: { orderBy: { position: "asc" }, select: { id: true, url: true } },
         },
       },
@@ -141,6 +217,21 @@ export async function createAdminWord(request: Request, response: Response): Pro
     orderBy: { position: "desc" },
     select: { position: true },
   });
+
+  if (parsed.data.images?.length) {
+    await prisma.image.createMany({
+      data: parsed.data.images.map((image, index) => ({
+        wordId: word.id,
+        url: image.url,
+        source: "pixabay",
+        provider: "Pixabay",
+        attribution: image.attribution,
+        metadata: image.metadata ? JSON.parse(JSON.stringify(image.metadata)) : undefined,
+        position: index,
+      })),
+    });
+  }
+
   const relation = await prisma.collectionWord.create({
     data: { collectionId, wordId: word.id, position: (lastWord?.position ?? 0) + 1 },
     select: {
@@ -153,6 +244,7 @@ export async function createAdminWord(request: Request, response: Response): Pro
           level: true,
           isPublished: true,
           images: { orderBy: { position: "asc" }, select: { id: true, url: true } },
+          audios: { orderBy: { position: "asc" }, select: { id: true, url: true, voice: true, accent: true, provider: true } },
           videos: { orderBy: { position: "asc" }, select: { id: true, url: true } },
         },
       },
@@ -164,7 +256,7 @@ export async function createAdminWord(request: Request, response: Response): Pro
 
 export async function createAdminWordsBulk(request: Request, response: Response): Promise<void> {
   const collectionId = request.params.collectionId;
-  if (typeof collectionId !== "string" || !uuidPattern.test(collectionId)) {
+  if (typeof collectionId !== "string" || (collectionId !== "new" && !uuidPattern.test(collectionId))) {
     response.status(400).json({ message: "Invalid collection id" });
     return;
   }
@@ -175,16 +267,26 @@ export async function createAdminWordsBulk(request: Request, response: Response)
     return;
   }
 
-  const collection = await prisma.collection.findUnique({ where: { id: collectionId }, select: { id: true } });
-  if (!collection) {
-    response.status(404).json({ message: "Collection not found" });
-    return;
+  let targetCollectionId = collectionId;
+  if (collectionId === "new") {
+    if (!parsed.data.collectionName || !parsed.data.collectionSlug) {
+      response.status(400).json({ message: "A new collection requires name and slug" });
+      return;
+    }
+    const collection = await prisma.collection.upsert({ where: { slug: parsed.data.collectionSlug }, update: {}, create: { name: parsed.data.collectionName, slug: parsed.data.collectionSlug, isPublished: false }, select: { id: true } });
+    targetCollectionId = collection.id;
+  } else {
+    const collection = await prisma.collection.findUnique({ where: { id: collectionId }, select: { id: true } });
+    if (!collection) {
+      response.status(404).json({ message: "Collection not found" });
+      return;
+    }
   }
 
-  const terms = [...new Set(parsed.data.terms.map((term) => term.trim()).filter(Boolean))];
+  const terms = [...new Map(parsed.data.words.map((word) => [word.term.toLowerCase(), word])).values()];
   const result = await prisma.$transaction(async (transaction) => {
     const lastWord = await transaction.collectionWord.findFirst({
-      where: { collectionId },
+      where: { collectionId: targetCollectionId },
       orderBy: { position: "desc" },
       select: { position: true },
     });
@@ -192,27 +294,82 @@ export async function createAdminWordsBulk(request: Request, response: Response)
     const words: Array<{ id: string; term: string; translationEs: string; level: string; isPublished: boolean }> = [];
     let skipped = 0;
 
-    for (const term of terms) {
+    for (const wordData of terms) {
+      const term = wordData.term;
       const word = await transaction.word.upsert({
         where: { term },
         update: {},
-        create: { term, translationEs: term, level: "A1", isPublished: false },
+        create: { term, translationEs: wordData.translationEs, level: "A1", isPublished: false },
         select: { id: true, term: true, translationEs: true, level: true, isPublished: true },
       });
-      const existing = await transaction.collectionWord.findUnique({ where: { collectionId_wordId: { collectionId, wordId: word.id } } });
+      const existing = await transaction.collectionWord.findUnique({ where: { collectionId_wordId: { collectionId: targetCollectionId, wordId: word.id } } });
       if (existing) {
         skipped += 1;
         continue;
       }
       position += 1;
-      await transaction.collectionWord.create({ data: { collectionId, wordId: word.id, position } });
+      await transaction.collectionWord.create({ data: { collectionId: targetCollectionId, wordId: word.id, position } });
       words.push(word);
     }
 
     return { words, skipped, received: terms.length };
   });
 
-  response.status(201).json(result);
+  const enrichedWords = [];
+  let failedAudio = 0;
+  for (const word of result.words) {
+    const translationEs = terms.find((item) => item.term.toLowerCase() === word.term.toLowerCase())?.translationEs ?? await translateTerm(word.term);
+    await prisma.word.update({ where: { id: word.id }, data: { translationEs } });
+    const images = await searchPixabayImages(word.term);
+    if (images.length) await prisma.image.createMany({ data: images.map((image, index) => ({ wordId: word.id, url: image.url, source: "pixabay", provider: "Pixabay", attribution: `Pixabay: ${image.user}`, metadata: { id: image.id, pageUrl: image.pageUrl, tags: image.tags }, position: index })) });
+    try {
+      const audio = await generatePiperAudio(request, word.id, word.term, "US");
+      await prisma.audio.create({ data: { wordId: word.id, ...audio } });
+    } catch { failedAudio += 1; }
+    enrichedWords.push(await prisma.word.findUniqueOrThrow({ where: { id: word.id }, select: { id: true, term: true, translationEs: true, level: true, isPublished: true, images: { orderBy: { position: "asc" }, select: { id: true, url: true } }, audios: { orderBy: { position: "asc" }, select: { id: true, url: true, voice: true, accent: true, provider: true } }, videos: { orderBy: { position: "asc" }, select: { id: true, url: true } } } }));
+  }
+  response.status(201).json({ ...result, words: enrichedWords, failedAudio, collectionId: targetCollectionId });
+}
+
+export async function fillMissingAdminImages(request: Request, response: Response): Promise<void> {
+  const collectionId = request.params.collectionId;
+  if (typeof collectionId !== "string" || !uuidPattern.test(collectionId)) {
+    response.status(400).json({ message: "Invalid collection id" });
+    return;
+  }
+
+  const words = await prisma.collectionWord.findMany({
+    where: { collectionId },
+    select: { word: { select: { id: true, term: true, _count: { select: { images: true } } } } },
+  });
+  const missing = words.filter(({ word }) => word._count.images === 0);
+  const updatedWords: Array<{ id: string; term: string; translationEs: string; level: string; isPublished: boolean; images: Array<{ id: string; url: string }>; audios: Array<{ id: string; url: string; voice: string | null; accent: string | null; provider: string | null }>; videos: Array<{ id: string; url: string }> }> = [];
+  for (const item of missing) {
+    const images = await searchPixabayImages(item.word.term);
+    if (images.length) {
+      await prisma.image.createMany({
+        data: images.slice(0, 2).map((image, index) => ({
+          wordId: item.word.id,
+          url: image.url,
+          source: "pixabay",
+          provider: "Pixabay",
+          attribution: `Pixabay: ${image.user}`,
+          metadata: { id: image.id, pageUrl: image.pageUrl, tags: image.tags },
+          position: index,
+        })),
+      });
+    }
+    updatedWords.push(await prisma.word.findUniqueOrThrow({
+      where: { id: item.word.id },
+      select: {
+        id: true, term: true, translationEs: true, level: true, isPublished: true,
+        images: { orderBy: { position: "asc" }, select: { id: true, url: true } },
+        audios: { orderBy: { position: "asc" }, select: { id: true, url: true, voice: true, accent: true, provider: true } },
+        videos: { orderBy: { position: "asc" }, select: { id: true, url: true } },
+      },
+    }));
+  }
+  response.status(200).json({ words: updatedWords, scanned: words.length, filled: updatedWords.filter((word) => word.images?.length).length });
 }
 
 export async function updateCollectionPublication(request: Request, response: Response): Promise<void> {
@@ -247,10 +404,48 @@ export async function updateAdminWord(request: Request, response: Response): Pro
     return;
   }
 
-  const word = await prisma.word.update({
-    where: { id: wordId },
-    data: parsed.data,
-    select: { id: true, term: true, translationEs: true, level: true, isPublished: true },
+  const { images, ...wordData } = parsed.data;
+  const word = await prisma.$transaction(async (transaction) => {
+    const updatedWord = await transaction.word.update({
+      where: { id: wordId },
+      data: wordData,
+    });
+
+    if (images?.length) {
+      const existingImages = await transaction.image.findMany({
+        where: { wordId, url: { in: images.map((image) => image.url) } },
+        select: { url: true },
+      });
+      const existingUrls = new Set(existingImages.map((image) => image.url));
+      const newImages = images.filter((image) => !existingUrls.has(image.url));
+      if (newImages.length) {
+        await transaction.image.createMany({
+          data: newImages.map((image, index) => ({
+            wordId,
+            url: image.url,
+            source: "pixabay",
+            provider: "Pixabay",
+            attribution: image.attribution,
+            metadata: image.metadata ? JSON.parse(JSON.stringify(image.metadata)) : undefined,
+            position: index,
+          })),
+        });
+      }
+    }
+
+    return transaction.word.findUniqueOrThrow({
+      where: { id: updatedWord.id },
+      select: {
+        id: true,
+        term: true,
+        translationEs: true,
+        level: true,
+        isPublished: true,
+        images: { orderBy: { position: "asc" }, select: { id: true, url: true } },
+          audios: { orderBy: { position: "asc" }, select: { id: true, url: true, voice: true, accent: true, provider: true } },
+        videos: { orderBy: { position: "asc" }, select: { id: true, url: true } },
+      },
+    });
   });
   response.status(200).json({ word });
 }
@@ -349,4 +544,61 @@ export async function updateAdminCollection(request: Request, response: Response
 
   const collection = await prisma.collection.update({ where: { id: collectionId }, data: parsed.data, include: { _count: { select: { words: true } } } });
   response.status(200).json({ collection });
+}
+
+async function generatePiperAudio(request: Request, wordId: string, term: string, accent: "US" | "UK") {
+  const piperPath = process.env.PIPER_PATH ?? "piper";
+  const configuredModelPath = accent === "UK" ? process.env.PIPER_VOICE_MODEL_UK : process.env.PIPER_VOICE_MODEL_US;
+  const modelCandidates = configuredModelPath ? [
+    path.isAbsolute(configuredModelPath) ? configuredModelPath : path.resolve(process.cwd(), configuredModelPath),
+    path.isAbsolute(configuredModelPath) ? configuredModelPath : path.resolve(process.cwd(), "../..", configuredModelPath),
+  ] : [];
+  const modelPath = modelCandidates.find((candidate) => existsSync(candidate));
+  if (!modelPath) {
+    throw new Error(`No se encontró el modelo Piper configurado: ${configuredModelPath ?? "sin ruta"}`);
+  }
+
+  const filename = `audio-${wordId}-${Date.now()}.wav`;
+  const outputPath = path.join(uploadDirectory, filename);
+  try {
+    const child = spawn(piperPath, ["--model", modelPath, "--output_file", outputPath], { windowsHide: true });
+    let stderr = "";
+    child.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
+    const processError = new Promise<Error>((_, reject) => child.once("error", reject));
+    const processClose = once(child, "close").then(([exitCode]) => {
+      if (exitCode !== 0) throw new Error(stderr.trim() || `Piper terminó con código ${exitCode}`);
+    });
+    child.stdin.write(`${term}\n`);
+    child.stdin.end();
+    await Promise.race([processClose, processError]);
+  } catch (error) {
+    await fs.rm(outputPath, { force: true });
+    throw new Error(error instanceof Error ? `No se pudo generar el audio: ${error.message}` : "No se pudo generar el audio.");
+  }
+
+  const apiUrl = `${request.protocol}://${request.get("host")}`;
+  return { url: `${apiUrl}/uploads/${filename}`, provider: "piper", voice: accent === "UK" ? "en_GB" : "en_US", accent, metadata: { text: term, filename } };
+}
+
+export async function generateAdminAudio(request: Request, response: Response): Promise<void> {
+  const wordId = request.params.wordId;
+  const parsed = generateAudioSchema.safeParse(request.body);
+  if (typeof wordId !== "string" || !uuidPattern.test(wordId) || !parsed.success) {
+    response.status(400).json({ message: "Invalid audio generation data" });
+    return;
+  }
+
+  const word = await prisma.word.findUnique({ where: { id: wordId }, select: { id: true, term: true } });
+  if (!word) {
+    response.status(404).json({ message: "Word not found" });
+    return;
+  }
+
+  try {
+    const generated = await generatePiperAudio(request, word.id, word.term, parsed.data.accent);
+    const audio = await prisma.audio.create({ data: { wordId: word.id, ...generated } });
+  response.status(201).json({ audio });
+  } catch (error) {
+    response.status(503).json({ message: error instanceof Error ? error.message : "No se pudo generar el audio." });
+  }
 }
