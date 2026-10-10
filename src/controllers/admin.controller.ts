@@ -31,6 +31,7 @@ const wordSchema = z.object({
   level: z.enum(["A1", "A2", "B1", "B2", "C1", "C2"]).default("A1"),
   images: z.array(z.object({
     url: z.string().url(),
+    source: z.enum(["pixabay", "manual"]).default("pixabay"),
     attribution: z.string().trim().max(300).optional(),
     metadata: z.record(z.string(), z.unknown()).optional(),
   })).max(4).optional(),
@@ -231,8 +232,8 @@ export async function createAdminWord(request: Request, response: Response): Pro
       data: parsed.data.images.map((image, index) => ({
         wordId: word.id,
         url: image.url,
-        source: "pixabay",
-        provider: "Pixabay",
+        source: image.source,
+        provider: image.source === "pixabay" ? "Pixabay" : undefined,
         attribution: image.attribution,
         metadata: image.metadata ? JSON.parse(JSON.stringify(image.metadata)) : undefined,
         position: index,
@@ -428,8 +429,8 @@ export async function updateAdminWord(request: Request, response: Response): Pro
           data: newImages.map((image, index) => ({
             wordId,
             url: image.url,
-            source: "pixabay",
-            provider: "Pixabay",
+            source: image.source,
+            provider: image.source === "pixabay" ? "Pixabay" : undefined,
             attribution: image.attribution,
             metadata: image.metadata ? JSON.parse(JSON.stringify(image.metadata)) : undefined,
             position: index,
