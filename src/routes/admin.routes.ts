@@ -6,12 +6,14 @@ import {
   createAdminWord,
   createAdminWordsBulk,
   deleteAdminAudio,
+  deleteAdminCollection,
   deleteAdminImage,
   deleteAdminVideo,
   fillMissingAdminImages,
   generateAdminAudio,
   listAdminCollections,
   listAdminWords,
+  removeAdminCollectionWord,
   searchAdminPixabay,
   updateAdminCollection,
   updateAdminWord,
@@ -31,10 +33,12 @@ adminRouter.use(requireAuth, requireAdmin);
 adminRouter.get("/collections", listAdminCollections);
 adminRouter.post("/collections", createAdminCollection);
 adminRouter.patch("/collections/:collectionId", updateAdminCollection);
+adminRouter.delete("/collections/:collectionId", deleteAdminCollection);
 adminRouter.patch("/collections/:collectionId/publication", updateCollectionPublication);
 adminRouter.get("/collections/:collectionId/words", listAdminWords);
 adminRouter.post("/collections/:collectionId/words", createAdminWord);
 adminRouter.post("/collections/:collectionId/words/bulk", createAdminWordsBulk);
+adminRouter.delete("/collections/:collectionId/words/:wordId", removeAdminCollectionWord);
 adminRouter.patch("/collections/:collectionId/words/publication", updateCollectionWordsPublication);
 adminRouter.post("/collections/:collectionId/images/fill-missing", fillMissingAdminImages);
 adminRouter.post("/collections/:collectionId/images/fill-missing/confirm", confirmMissingAdminImages);

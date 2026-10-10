@@ -514,6 +514,36 @@ export async function deleteAdminVideo(request: Request, response: Response): Pr
   response.status(204).send();
 }
 
+export async function deleteAdminCollection(request: Request, response: Response): Promise<void> {
+  const collectionId = request.params.collectionId;
+  if (!isUuid(collectionId)) {
+    response.status(400).json({ message: "Invalid collection id" });
+    return;
+  }
+
+  await prisma.$transaction(async (transaction) => {
+    const links = await transaction.collectionWord.findMany({ where: { collectionId }, select: { wordId: true } });
+    await transaction.collection.delete({ where: { id: collectionId } });
+    // Words that only lived in this collection would be unreachable from the admin UI.
+    await transaction.word.deleteMany({ where: { id: { in: links.map((link) => link.wordId) }, collections: { none: {} } } });
+  });
+  response.status(204).send();
+}
+
+export async function removeAdminCollectionWord(request: Request, response: Response): Promise<void> {
+  const { collectionId, wordId } = request.params;
+  if (!isUuid(collectionId) || !isUuid(wordId)) {
+    response.status(400).json({ message: "Invalid collection or word id" });
+    return;
+  }
+
+  await prisma.$transaction(async (transaction) => {
+    await transaction.collectionWord.delete({ where: { collectionId_wordId: { collectionId, wordId } } });
+    await transaction.word.deleteMany({ where: { id: wordId, collections: { none: {} } } });
+  });
+  response.status(204).send();
+}
+
 export async function deleteAdminAudio(request: Request, response: Response): Promise<void> {
   const audioId = request.params.audioId;
   if (!isUuid(audioId)) {
