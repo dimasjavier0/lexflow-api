@@ -37,6 +37,7 @@ export async function searchPixabay(query: string, options: { page?: number; per
 
 /** Best-effort lookup for automatic enrichment: any failure simply yields no images. */
 export async function findPixabayImages(term: string): Promise<PixabayImage[]> {
-  const result = await searchPixabay(term, { perPage: 2 });
-  return result.status === "ok" ? result.images : [];
+  // Pixabay rejects per_page below 3, so ask for the minimum and keep two.
+  const result = await searchPixabay(term, { perPage: 3 });
+  return result.status === "ok" ? result.images.slice(0, 2) : [];
 }
