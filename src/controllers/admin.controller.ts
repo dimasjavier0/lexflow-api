@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "../db/prisma.js";
 import { publicBaseUrl } from "../lib/public-url.js";
 import { isPrismaError } from "../lib/prisma-errors.js";
+import { normalizeTerm } from "../lib/text.js";
 import { isUuid } from "../lib/validation.js";
 import { generatePiperAudio } from "../services/piper.js";
 import { findPixabayImages, searchPixabay } from "../services/pixabay.js";
@@ -111,14 +112,30 @@ const fillMissingConfirmSchema = z.object({
   })).max(50),
 });
 
-async function translateTerm(term: string): Promise<string> {
-  try {
-    const response = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(term)}&langpair=en|es`);
-    const body = await response.json() as { responseData?: { translatedText?: string } };
-    return body.responseData?.translatedText?.trim() || term;
-  } catch {
-    return term;
+/** How many words are enriched (Pixabay + Piper) at the same time during a bulk import. */
+const ENRICH_CONCURRENCY = 4;
+
+/**
+ * Existing words keyed by normalized term, so "Café", "cafe" and "CAFE" resolve to one word.
+ * Loads every term: fine for a vocabulary-sized table, and it needs no database extension.
+ */
+async function loadWordIdsByTerm(): Promise<Map<string, string>> {
+  const words = await prisma.word.findMany({ select: { id: true, term: true }, orderBy: { createdAt: "asc" } });
+  const byTerm = new Map<string, string>();
+  for (const word of words) {
+    const key = normalizeTerm(word.term);
+    if (!byTerm.has(key)) byTerm.set(key, word.id);
   }
+  return byTerm;
+}
+
+/** Runs `task` over `items` with at most `limit` in flight. */
+async function runPooled<T>(items: T[], limit: number, task: (item: T) => Promise<void>): Promise<void> {
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) await task(items[next++]);
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
 }
 
 export async function listAdminCollections(_request: Request, response: Response): Promise<void> {
@@ -210,18 +227,23 @@ export async function createAdminWord(request: Request, response: Response): Pro
 
   // Words are shared between collections: reusing a term refreshes its
   // translation and level but must not unpublish it elsewhere.
-  const word = await prisma.word.upsert({
-    where: { term: parsed.data.term },
-    update: { translationEs: parsed.data.translationEs, level: parsed.data.level, partOfSpeech: parsed.data.partOfSpeech, frequencyRank: parsed.data.frequencyRank },
-    create: {
-      term: parsed.data.term,
-      translationEs: parsed.data.translationEs,
-      level: parsed.data.level,
-      partOfSpeech: parsed.data.partOfSpeech,
-      frequencyRank: parsed.data.frequencyRank,
-      isPublished: parsed.data.isPublished ?? false,
-    },
-  });
+  // The term is matched ignoring accents and case, keeping the spelling already stored.
+  const existingWordId = (await loadWordIdsByTerm()).get(normalizeTerm(parsed.data.term));
+  const word = existingWordId
+    ? await prisma.word.update({
+      where: { id: existingWordId },
+      data: { translationEs: parsed.data.translationEs, level: parsed.data.level, partOfSpeech: parsed.data.partOfSpeech, frequencyRank: parsed.data.frequencyRank },
+    })
+    : await prisma.word.create({
+      data: {
+        term: parsed.data.term,
+        translationEs: parsed.data.translationEs,
+        level: parsed.data.level,
+        partOfSpeech: parsed.data.partOfSpeech,
+        frequencyRank: parsed.data.frequencyRank,
+        isPublished: parsed.data.isPublished ?? false,
+      },
+    });
 
   const existing = await prisma.collectionWord.findUnique({
     where: { collectionId_wordId: { collectionId, wordId: word.id } },
@@ -271,13 +293,24 @@ export async function createAdminWordsBulk(request: Request, response: Response)
   }
 
   let targetCollectionId = collectionId;
+  let collectionCreated = false;
   if (collectionId === "new") {
-    if (!parsed.data.collectionName || !parsed.data.collectionSlug) {
+    const { collectionName, collectionSlug } = parsed.data;
+    if (!collectionName || !collectionSlug) {
       response.status(400).json({ message: "A new collection requires name and slug" });
       return;
     }
-    const collection = await prisma.collection.upsert({ where: { slug: parsed.data.collectionSlug }, update: {}, create: { name: parsed.data.collectionName, slug: parsed.data.collectionSlug, isPublished: false }, select: { id: true } });
-    targetCollectionId = collection.id;
+    // A list named like an existing collection (ignoring accents and case) is added to it.
+    const nameKey = normalizeTerm(collectionName);
+    const collections = await prisma.collection.findMany({ select: { id: true, name: true, slug: true } });
+    const match = collections.find((collection) => normalizeTerm(collection.name) === nameKey || collection.slug === collectionSlug);
+    if (match) {
+      targetCollectionId = match.id;
+    } else {
+      const collection = await prisma.collection.create({ data: { name: collectionName, slug: collectionSlug, isPublished: false }, select: { id: true } });
+      targetCollectionId = collection.id;
+      collectionCreated = true;
+    }
   } else {
     const collection = await prisma.collection.findUnique({ where: { id: collectionId }, select: { id: true } });
     if (!collection) {
@@ -286,52 +319,56 @@ export async function createAdminWordsBulk(request: Request, response: Response)
     }
   }
 
-  const terms = [...new Map(parsed.data.words.map((word) => [word.term.toLowerCase(), word])).values()];
-  const result = await prisma.$transaction(async (transaction) => {
-    const lastWord = await transaction.collectionWord.findFirst({
-      where: { collectionId: targetCollectionId },
-      orderBy: { position: "desc" },
-      select: { position: true },
-    });
-    let position = lastWord?.position ?? 0;
-    const words: Array<{ id: string; term: string; translationEs: string; level: string; isPublished: boolean }> = [];
-    let skipped = 0;
+  // Repeated terms inside the list keep their first appearance.
+  const entries = new Map<string, { term: string; translationEs: string }>();
+  for (const word of parsed.data.words) {
+    const key = normalizeTerm(word.term);
+    if (key && !entries.has(key)) entries.set(key, word);
+  }
 
-    for (const wordData of terms) {
-      const term = wordData.term;
-      const word = await transaction.word.upsert({
-        where: { term },
-        update: {},
-        create: { term, translationEs: wordData.translationEs, level: "A1", isPublished: false },
-        select: { id: true, term: true, translationEs: true, level: true, isPublished: true },
+  const wordIdsByTerm = await loadWordIdsByTerm();
+  const newEntries = [...entries].filter(([key]) => !wordIdsByTerm.has(key));
+  const linkedWordIds = await prisma.$transaction(async (transaction) => {
+    if (newEntries.length) {
+      const created = await transaction.word.createManyAndReturn({
+        data: newEntries.map(([, word]) => ({ term: word.term, translationEs: word.translationEs, level: "A1" as const, isPublished: false })),
+        select: { id: true, term: true },
       });
-      const existing = await transaction.collectionWord.findUnique({ where: { collectionId_wordId: { collectionId: targetCollectionId, wordId: word.id } } });
-      if (existing) {
-        skipped += 1;
-        continue;
-      }
-      position += 1;
-      await transaction.collectionWord.create({ data: { collectionId: targetCollectionId, wordId: word.id, position } });
-      words.push(word);
+      for (const word of created) wordIdsByTerm.set(normalizeTerm(word.term), word.id);
     }
 
-    return { words, skipped, received: terms.length };
+    const links = await transaction.collectionWord.findMany({ where: { collectionId: targetCollectionId }, select: { wordId: true, position: true } });
+    const alreadyLinked = new Set(links.map((link) => link.wordId));
+    let position = Math.max(0, ...links.map((link) => link.position));
+    // Map order is list order, so words keep the position they had in the list.
+    const toLink = [...entries.keys()].map((key) => wordIdsByTerm.get(key)).filter((wordId): wordId is string => wordId !== undefined && !alreadyLinked.has(wordId));
+    if (toLink.length) {
+      await transaction.collectionWord.createMany({ data: toLink.map((wordId) => ({ collectionId: targetCollectionId, wordId, position: ++position })) });
+    }
+    return toLink;
   });
 
-  const enrichedWords = [];
+  // Words reused from other collections may already have media: only fill what is missing.
+  const baseUrl = publicBaseUrl(request);
+  const linked = await prisma.word.findMany({ where: { id: { in: linkedWordIds } }, select: { id: true, term: true, _count: { select: { images: true, audios: true } } } });
   let failedAudio = 0;
-  for (const word of result.words) {
-    const translationEs = terms.find((item) => item.term.toLowerCase() === word.term.toLowerCase())?.translationEs ?? await translateTerm(word.term);
-    await prisma.word.update({ where: { id: word.id }, data: { translationEs } });
-    const images = await findPixabayImages(word.term);
-    if (images.length) await prisma.image.createMany({ data: images.map((image, index) => ({ wordId: word.id, url: image.url, source: "pixabay", provider: "Pixabay", attribution: `Pixabay: ${image.user}`, metadata: { id: image.id, pageUrl: image.pageUrl, tags: image.tags }, position: index })) });
-    try {
-      const audio = await generatePiperAudio(publicBaseUrl(request), word.id, word.term, "US");
-      await prisma.audio.create({ data: { wordId: word.id, ...audio } });
-    } catch { failedAudio += 1; }
-    enrichedWords.push(await prisma.word.findUniqueOrThrow({ where: { id: word.id }, select: adminWordSelect }));
-  }
-  response.status(201).json({ ...result, words: enrichedWords, failedAudio, collectionId: targetCollectionId });
+  await runPooled(linked, ENRICH_CONCURRENCY, async (word) => {
+    if (word._count.images === 0) {
+      const images = await findPixabayImages(word.term);
+      if (images.length) await prisma.image.createMany({ data: images.map((image, index) => ({ wordId: word.id, url: image.url, source: "pixabay", provider: "Pixabay", attribution: `Pixabay: ${image.user}`, metadata: { id: image.id, pageUrl: image.pageUrl, tags: image.tags }, position: index })) });
+    }
+    if (word._count.audios === 0) {
+      try {
+        const audio = await generatePiperAudio(baseUrl, word.id, word.term, "US");
+        await prisma.audio.create({ data: { wordId: word.id, ...audio } });
+      } catch { failedAudio += 1; }
+    }
+  });
+
+  const enriched = await prisma.word.findMany({ where: { id: { in: linkedWordIds } }, select: adminWordSelect });
+  const order = new Map(linkedWordIds.map((wordId, index) => [wordId, index]));
+  enriched.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+  response.status(201).json({ words: enriched, skipped: entries.size - linkedWordIds.length, received: entries.size, failedAudio, collectionId: targetCollectionId, collectionCreated });
 }
 
 export async function fillMissingAdminImages(request: Request, response: Response): Promise<void> {
