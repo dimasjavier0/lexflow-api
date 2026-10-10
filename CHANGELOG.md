@@ -42,3 +42,18 @@ Los cambios relevantes del proyecto se registran aquí.
 - Se rediseñó el panel admin como dashboard de acciones con colecciones y palabras expandibles.
 - Se añadió carga de imágenes por arrastre, persistida en disco local y registrada en PostgreSQL.
 - El dashboard admin ahora usa modales para acciones y un editor de palabra reutilizable dentro de la biblioteca.
+- La interfaz web se migró a utilidades Tailwind v4 con tokens de marca en `@theme` y componentes compartidos en `components/ui` (Button, Field, Modal, Switch, Badge, Alert, Toast, EmptyState).
+- El panel admin se dividió en `features/admin` (hook de datos, filas de colección y palabra, modales y editor) y todas las llamadas pasan por `lib/api.ts` y `lib/admin-api.ts`.
+- Las rutas `/admin` de la API se agrupan en un router con autenticación única; Pixabay y Piper viven en `services/`.
+- La app pública solo muestra y cuenta palabras publicadas; el panel permite publicar cada palabra o todas las de una colección.
+- El flujo de aprendizaje añade atajos de teclado, pantalla de fin de colección, reintentos y video embebido.
+- El selector de imágenes separa la búsqueda en Pixabay de las URL manuales, y el editor de palabras permite borrar sonidos.
+
+### Fixed
+
+- Las rutas de búsqueda en Pixabay y de generación de audio no estaban registradas en la API (404).
+- Recargar `/admin` redirigía a un administrador al inicio, y cada refresco de token cerraba los formularios abiertos.
+- Añadir palabras a una colección sin abrir dejaba la lista incompleta; confirmar contenido faltante la dejaba vacía.
+- El formulario de palabra rápida mostraba un error tras guardar correctamente.
+- Un fallo al guardar el progreso sustituía la lección completa por una pantalla de error.
+- Reutilizar una palabra existente en otra colección la despublicaba.
