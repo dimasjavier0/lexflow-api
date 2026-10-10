@@ -540,6 +540,23 @@ export async function deleteAdminVideo(request: Request, response: Response): Pr
   response.status(204).send();
 }
 
+export async function deleteAdminAudio(request: Request, response: Response): Promise<void> {
+  const audioId = request.params.audioId;
+  if (typeof audioId !== "string" || !uuidPattern.test(audioId)) {
+    response.status(400).json({ message: "Invalid audio id" });
+    return;
+  }
+
+  const audio = await prisma.audio.findUnique({ where: { id: audioId }, select: { id: true } });
+  if (!audio) {
+    response.status(404).json({ message: "Audio not found" });
+    return;
+  }
+
+  await prisma.audio.delete({ where: { id: audioId } });
+  response.status(204).send();
+}
+
 export async function updateAdminCollection(request: Request, response: Response): Promise<void> {
   const collectionId = request.params.collectionId;
   const parsed = editCollectionSchema.safeParse(request.body);

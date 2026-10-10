@@ -6,7 +6,7 @@ import { getMe } from "./controllers/me.controller.js";
 import { getCollection, listCollections } from "./controllers/collections.controller.js";
 import { listProgress, updateProgress } from "./controllers/progress.controller.js";
 import { createAdminCollection, createAdminMedia, createAdminWord, createAdminWordsBulk, deleteAdminImage, deleteAdminVideo, listAdminCollections, listAdminWords, updateAdminCollection, updateAdminWord, updateCollectionPublication, updateWordPublication, uploadAdminImage } from "./controllers/admin.controller.js";
-import { confirmMissingAdminImages, fillMissingAdminImages, generateAdminAudio, searchAdminPixabay } from "./controllers/admin.controller.js";
+import { confirmMissingAdminImages, deleteAdminAudio, fillMissingAdminImages, generateAdminAudio, searchAdminPixabay } from "./controllers/admin.controller.js";
 import { errorHandler } from "./middlewares/error-handler.js";
 import { requireAdmin } from "./middlewares/require-admin.js";
 import { requireAuth } from "./middlewares/require-auth.js";
@@ -41,6 +41,7 @@ app.post("/admin/words/:wordId/audio/generate", requireAuth, requireAdmin, gener
 app.post("/admin/words/:wordId/images", requireAuth, requireAdmin, imageUpload.single("image"), uploadAdminImage);
 app.delete("/admin/images/:imageId", requireAuth, requireAdmin, deleteAdminImage);
 app.delete("/admin/videos/:videoId", requireAuth, requireAdmin, deleteAdminVideo);
+app.delete("/admin/audios/:audioId", requireAuth, requireAdmin, deleteAdminAudio);
 app.use(errorHandler);
 
 app.listen(port, () => console.info(`LexFlow API listening on port ${port}`));
