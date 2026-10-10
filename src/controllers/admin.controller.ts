@@ -59,6 +59,13 @@ const mediaSchema = z.object({
 const generateAudioSchema = z.object({
   accent: z.enum(["US", "UK"]).default("US"),
 });
+const fillMissingConfirmSchema = z.object({
+  items: z.array(z.object({
+    wordId: z.string().uuid(),
+    images: z.array(z.object({ url: z.string().url(), attribution: z.string().optional(), metadata: z.record(z.string(), z.unknown()).optional() })).max(2),
+    audio: z.object({ url: z.string().url(), provider: z.string(), voice: z.string(), accent: z.string(), metadata: z.record(z.string(), z.unknown()).optional() }).nullable(),
+  })).max(50),
+});
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -338,38 +345,35 @@ export async function fillMissingAdminImages(request: Request, response: Respons
     return;
   }
 
-  const words = await prisma.collectionWord.findMany({
-    where: { collectionId },
-    select: { word: { select: { id: true, term: true, _count: { select: { images: true } } } } },
-  });
-  const missing = words.filter(({ word }) => word._count.images === 0);
-  const updatedWords: Array<{ id: string; term: string; translationEs: string; level: string; isPublished: boolean; images: Array<{ id: string; url: string }>; audios: Array<{ id: string; url: string; voice: string | null; accent: string | null; provider: string | null }>; videos: Array<{ id: string; url: string }> }> = [];
+  const words = await prisma.collectionWord.findMany({ where: { collectionId }, select: { word: { select: { id: true, term: true, _count: { select: { images: true, audios: true } } } } } });
+  const missing = words.filter(({ word }) => word._count.images === 0 || word._count.audios === 0);
+  const previews: Array<{ wordId: string; term: string; images: Array<{ url: string; attribution: string; metadata: Record<string, unknown> }>; audio: { url: string; provider: string; voice: string; accent: string; metadata: Record<string, unknown> } | null }> = [];
   for (const item of missing) {
     const images = await searchPixabayImages(item.word.term);
-    if (images.length) {
-      await prisma.image.createMany({
-        data: images.slice(0, 2).map((image, index) => ({
-          wordId: item.word.id,
-          url: image.url,
-          source: "pixabay",
-          provider: "Pixabay",
-          attribution: `Pixabay: ${image.user}`,
-          metadata: { id: image.id, pageUrl: image.pageUrl, tags: image.tags },
-          position: index,
-        })),
-      });
+    let audio = null;
+    if (item.word._count.audios === 0) {
+      try { audio = await generatePiperAudio(request, item.word.id, item.word.term, "US"); } catch { audio = null; }
     }
-    updatedWords.push(await prisma.word.findUniqueOrThrow({
-      where: { id: item.word.id },
-      select: {
-        id: true, term: true, translationEs: true, level: true, isPublished: true,
-        images: { orderBy: { position: "asc" }, select: { id: true, url: true } },
-        audios: { orderBy: { position: "asc" }, select: { id: true, url: true, voice: true, accent: true, provider: true } },
-        videos: { orderBy: { position: "asc" }, select: { id: true, url: true } },
-      },
-    }));
+    previews.push({ wordId: item.word.id, term: item.word.term, images: item.word._count.images === 0 ? images.slice(0, 2).map((image) => ({ url: image.url, attribution: `Pixabay: ${image.user}`, metadata: { id: image.id, pageUrl: image.pageUrl, tags: image.tags } })) : [], audio });
   }
-  response.status(200).json({ words: updatedWords, scanned: words.length, filled: updatedWords.filter((word) => word.images?.length).length });
+  response.status(200).json({ previews, scanned: words.length });
+}
+
+export async function confirmMissingAdminImages(request: Request, response: Response): Promise<void> {
+  const collectionId = request.params.collectionId;
+  const parsed = fillMissingConfirmSchema.safeParse(request.body);
+  if (typeof collectionId !== "string" || !uuidPattern.test(collectionId) || !parsed.success) { response.status(400).json({ message: "Invalid maintenance preview" }); return; }
+  const allowed = new Set((await prisma.collectionWord.findMany({ where: { collectionId }, select: { wordId: true } })).map((item) => item.wordId));
+  let saved = 0;
+  for (const item of parsed.data.items) {
+    if (!allowed.has(item.wordId)) continue;
+    const existingImages = await prisma.image.count({ where: { wordId: item.wordId } });
+    if (existingImages === 0 && item.images.length) await prisma.image.createMany({ data: item.images.slice(0, 2).map((image, index) => ({ wordId: item.wordId, url: image.url, source: "pixabay", provider: "Pixabay", attribution: image.attribution, metadata: image.metadata ? JSON.parse(JSON.stringify(image.metadata)) : undefined, position: index })) });
+    const existingAudio = await prisma.audio.count({ where: { wordId: item.wordId } });
+    if (existingAudio === 0 && item.audio) await prisma.audio.create({ data: { wordId: item.wordId, ...item.audio, metadata: item.audio.metadata ? JSON.parse(JSON.stringify(item.audio.metadata)) : undefined } });
+    saved += 1;
+  }
+  response.status(200).json({ saved });
 }
 
 export async function updateCollectionPublication(request: Request, response: Response): Promise<void> {
