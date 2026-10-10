@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma.js";
 import { isUuid } from "../lib/validation.js";
+import { levelProgress, pointsForReview, streakAfterActivity } from "../services/gamification.js";
 import { scheduleReview } from "../services/srs.js";
 
 const dueQuerySchema = z.object({
@@ -74,8 +75,9 @@ export async function submitReview(request: Request, response: Response): Promis
     return;
   }
 
+  const userId = user.id;
   const progress = await prisma.userWordProgress.findUnique({
-    where: { userId_wordId: { userId: user.id, wordId } },
+    where: { userId_wordId: { userId, wordId } },
     select: { id: true, repetitions: true, intervalDays: true, easeFactor: true, stage: true },
   });
   if (!progress) {
@@ -85,11 +87,32 @@ export async function submitReview(request: Request, response: Response): Promis
 
   const now = new Date();
   const update = scheduleReview(progress, parsed.data.result, now);
-  const updated = await prisma.userWordProgress.update({
-    where: { id: progress.id },
-    data: { ...update, lastReviewedAt: now },
-    select: { wordId: true, stage: true, repetitions: true, intervalDays: true, nextReviewAt: true },
+  const becameMastered = progress.stage !== "MASTERED" && update.stage === "MASTERED";
+  const pointsEarned = pointsForReview(parsed.data.result, becameMastered);
+
+  const { updated, stats } = await prisma.$transaction(async (transaction) => {
+    const updated = await transaction.userWordProgress.update({
+      where: { id: progress.id },
+      data: { ...update, lastReviewedAt: now },
+      select: { wordId: true, stage: true, repetitions: true, intervalDays: true, nextReviewAt: true },
+    });
+    const current = await transaction.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { streakCurrent: true, streakBest: true, lastActivityOn: true },
+    });
+    // Any completed review keeps the streak alive, right or wrong.
+    const stats = await transaction.user.update({
+      where: { id: userId },
+      data: { ...streakAfterActivity(current, now), pointsTotal: { increment: pointsEarned } },
+      select: { pointsTotal: true, streakCurrent: true, streakBest: true },
+    });
+    return { updated, stats };
   });
 
-  response.status(200).json({ progress: updated, becameMastered: progress.stage !== "MASTERED" && updated.stage === "MASTERED" });
+  response.status(200).json({
+    progress: updated,
+    becameMastered,
+    pointsEarned,
+    stats: { ...stats, level: levelProgress(stats.pointsTotal).level },
+  });
 }

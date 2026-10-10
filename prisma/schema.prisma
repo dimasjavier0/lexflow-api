@@ -61,6 +61,14 @@ model User {
   id        String             @id @db.Uuid
   email     String             @unique
   role      UserRole           @default(USER)
+  name      String?
+  avatarUrl String?
+  /// Gamificación básica: los puntos solo se ganan con repasos acertados.
+  pointsTotal    Int       @default(0)
+  streakCurrent  Int       @default(0)
+  streakBest     Int       @default(0)
+  /// Último día (UTC) con al menos un repaso; base del cálculo de la racha.
+  lastActivityOn DateTime? @db.Date
   createdAt DateTime           @default(now())
   updatedAt DateTime           @updatedAt
   progress  UserWordProgress[]
