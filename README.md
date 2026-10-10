@@ -59,6 +59,9 @@ URLs locales:
 - Selección de nivel CEFR, lecciones que omiten las palabras ya conocidas y avance por colección.
 - Publicación por palabra; los estudiantes solo ven palabras publicadas.
 - Búsqueda de imágenes en Pixabay y eliminación de colecciones, palabras y recursos desde el panel.
+- Categoría gramatical, frecuencia, oraciones de ejemplo y palabras relacionadas por palabra.
+- Repaso espaciado (SM-2) en `/review`: imagen, audio y escribir la palabra.
+- Perfil con puntos, nivel y racha en `/profile`, y búsqueda de palabras con autocompletado.
 - Dashboard admin con tarjetas de acciones, colecciones expandibles y carga de imágenes por arrastre.
 - Editor reutilizable de palabras para crear y editar término, traducción, nivel, enlace de imagen y archivo arrastrado.
 - Manifest y service worker básicos para instalación como PWA.
@@ -66,6 +69,13 @@ URLs locales:
 Las imágenes arrastradas se guardan localmente en `apps/api/uploads/` y su URL queda registrada en PostgreSQL. Este almacenamiento está pensado para desarrollo local; producción deberá migrarlo a Supabase Storage o a un bucket S3-compatible.
 
 El panel admin requiere que el usuario tenga `role = 'ADMIN'` en la base PostgreSQL local.
+
+## Repaso espaciado y gamificación
+
+- Una palabra entra en el repaso cuando el estudiante la marca como «Quiero aprender». Cada repaso aplica SM-2 (`apps/api/src/services/srs.ts`): un acierto alarga el intervalo (1, 6 y después `intervalo × facilidad` días) y un fallo la devuelve al día siguiente.
+- Cuatro aciertos seguidos convierten la palabra en dominada; un fallo posterior la devuelve a «aprendiendo».
+- Puntos (`apps/api/src/services/gamification.ts`): 10 por acierto, 5 por acierto con pista y 25 extra al dominar una palabra. El nivel `n` empieza en `(n − 1)² × 100` puntos.
+- La racha cuenta días consecutivos (en UTC) con al menos un repaso y se pierde al saltarse un día.
 
 ## Seguridad de la API
 

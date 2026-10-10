@@ -52,6 +52,10 @@ Los cambios relevantes del proyecto se registran aquí.
 - Las lecciones empiezan solo con las palabras pendientes y las tarjetas de inicio muestran el avance del estudiante.
 - El panel permite eliminar colecciones, quitar palabras de una colección y asociar audio por URL.
 - La API restringe CORS mediante `CORS_ORIGINS` y limita las peticiones por IP.
+- Las palabras admiten categoría gramatical, frecuencia de uso, oraciones de ejemplo y relaciones (sinónimos, antónimos, derivadas…).
+- Repaso espaciado SM-2 para las palabras marcadas «Quiero aprender», con una pantalla de repaso imagen → audio → escribir la palabra.
+- Perfil del estudiante con nombre y avatar, puntos, nivel y racha diaria, y página «Mi progreso».
+- Búsqueda de palabras con autocompletado desde el inicio.
 
 ### Fixed
 
