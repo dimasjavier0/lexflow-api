@@ -4,7 +4,7 @@ import express from "express";
 import { getCollection, listCollections } from "./controllers/collections.controller.js";
 import { getHealth } from "./controllers/health.controller.js";
 import { getMe } from "./controllers/me.controller.js";
-import { listProgress, updateProgress } from "./controllers/progress.controller.js";
+import { listProgress, summarizeProgress, updateProgress } from "./controllers/progress.controller.js";
 import { errorHandler } from "./middlewares/error-handler.js";
 import { uploadDirectory } from "./middlewares/image-upload.js";
 import { requireAuth } from "./middlewares/require-auth.js";
@@ -22,6 +22,7 @@ app.get("/collections/:slug", getCollection);
 app.get("/me", requireAuth, getMe);
 app.put("/progress/:wordId", requireAuth, updateProgress);
 app.get("/progress", requireAuth, listProgress);
+app.get("/progress/summary", requireAuth, summarizeProgress);
 app.use("/admin", adminRouter);
 app.use(errorHandler);
 

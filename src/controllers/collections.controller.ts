@@ -1,10 +1,6 @@
 import type { Request, Response } from "express";
-import { z } from "zod";
 import { prisma } from "../db/prisma.js";
-
-const levelQuerySchema = z.object({
-  level: z.enum(["A1", "A2", "B1", "B2", "C1", "C2"]).optional(),
-});
+import { levelQuerySchema } from "../lib/validation.js";
 
 export async function listCollections(request: Request, response: Response): Promise<void> {
   const parsed = levelQuerySchema.safeParse(request.query);
