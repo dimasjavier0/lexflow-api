@@ -43,6 +43,13 @@ enum WordRelationshipType {
   RELATED
 }
 
+/// Etapa de una palabra dentro del repaso espaciado.
+enum SrsStage {
+  NEW
+  LEARNING
+  MASTERED
+}
+
 enum LearningStatus {
   WANT_TO_LEARN
   NOT_INTERESTED
@@ -190,6 +197,14 @@ model UserWordProgress {
   userId    String         @db.Uuid
   wordId    String         @db.Uuid
   status    LearningStatus
+  /// Estado SM-2. Solo avanza con los repasos de las palabras WANT_TO_LEARN.
+  stage          SrsStage  @default(NEW)
+  repetitions    Int       @default(0)
+  intervalDays   Int       @default(0)
+  easeFactor     Float     @default(2.5)
+  lastReviewedAt DateTime?
+  /// null = pendiente desde ya (todavía no se ha repasado nunca).
+  nextReviewAt   DateTime?
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt
   user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -197,5 +212,6 @@ model UserWordProgress {
 
   @@unique([userId, wordId])
   @@index([userId, status])
+  @@index([userId, nextReviewAt])
   @@index([wordId])
 }

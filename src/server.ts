@@ -5,6 +5,7 @@ import { getCollection, listCollections } from "./controllers/collections.contro
 import { getHealth } from "./controllers/health.controller.js";
 import { getMe } from "./controllers/me.controller.js";
 import { listProgress, summarizeProgress, updateProgress } from "./controllers/progress.controller.js";
+import { listDueReviews, submitReview } from "./controllers/review.controller.js";
 import { errorHandler } from "./middlewares/error-handler.js";
 import { uploadDirectory } from "./middlewares/image-upload.js";
 import { rateLimit } from "./middlewares/rate-limit.js";
@@ -28,6 +29,8 @@ app.get("/me", requireAuth, getMe);
 app.put("/progress/:wordId", requireAuth, updateProgress);
 app.get("/progress", requireAuth, listProgress);
 app.get("/progress/summary", requireAuth, summarizeProgress);
+app.get("/reviews/due", requireAuth, listDueReviews);
+app.post("/reviews/:wordId", requireAuth, submitReview);
 app.use("/admin", adminRouter);
 app.use(errorHandler);
 
