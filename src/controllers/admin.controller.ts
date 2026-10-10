@@ -402,6 +402,21 @@ export async function updateWordPublication(request: Request, response: Response
   response.status(200).json({ word });
 }
 
+export async function updateCollectionWordsPublication(request: Request, response: Response): Promise<void> {
+  const collectionId = request.params.collectionId;
+  const parsed = publicationSchema.safeParse(request.body);
+  if (typeof collectionId !== "string" || !uuidPattern.test(collectionId) || !parsed.success) {
+    response.status(400).json({ message: "Invalid publication data" });
+    return;
+  }
+
+  const result = await prisma.word.updateMany({
+    where: { collections: { some: { collectionId } } },
+    data: parsed.data,
+  });
+  response.status(200).json({ updated: result.count });
+}
+
 export async function updateAdminWord(request: Request, response: Response): Promise<void> {
   const wordId = request.params.wordId;
   const parsed = wordSchema.partial().safeParse(request.body);

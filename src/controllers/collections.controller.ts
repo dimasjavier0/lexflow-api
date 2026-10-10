@@ -11,7 +11,7 @@ export async function listCollections(_request: Request, response: Response): Pr
       slug: true,
       description: true,
       imageUrl: true,
-      _count: { select: { words: true } },
+      _count: { select: { words: { where: { word: { isPublished: true } } } } },
     },
   });
 
@@ -35,6 +35,7 @@ export async function getCollection(request: Request, response: Response): Promi
       description: true,
       imageUrl: true,
       words: {
+        where: { word: { isPublished: true } },
         orderBy: { position: "asc" },
         select: {
           position: true,

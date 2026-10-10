@@ -6,7 +6,7 @@ import { getMe } from "./controllers/me.controller.js";
 import { getCollection, listCollections } from "./controllers/collections.controller.js";
 import { listProgress, updateProgress } from "./controllers/progress.controller.js";
 import { createAdminCollection, createAdminMedia, createAdminWord, createAdminWordsBulk, deleteAdminImage, deleteAdminVideo, listAdminCollections, listAdminWords, updateAdminCollection, updateAdminWord, updateCollectionPublication, updateWordPublication, uploadAdminImage } from "./controllers/admin.controller.js";
-import { confirmMissingAdminImages, deleteAdminAudio, fillMissingAdminImages, generateAdminAudio, searchAdminPixabay } from "./controllers/admin.controller.js";
+import { confirmMissingAdminImages, deleteAdminAudio, updateCollectionWordsPublication, fillMissingAdminImages, generateAdminAudio, searchAdminPixabay } from "./controllers/admin.controller.js";
 import { errorHandler } from "./middlewares/error-handler.js";
 import { requireAdmin } from "./middlewares/require-admin.js";
 import { requireAuth } from "./middlewares/require-auth.js";
@@ -34,6 +34,7 @@ app.post("/admin/collections/:collectionId/images/fill-missing", requireAuth, re
 app.post("/admin/collections/:collectionId/images/fill-missing/confirm", requireAuth, requireAdmin, confirmMissingAdminImages);
 app.patch("/admin/collections/:collectionId", requireAuth, requireAdmin, updateAdminCollection);
 app.patch("/admin/collections/:collectionId/publication", requireAuth, requireAdmin, updateCollectionPublication);
+app.patch("/admin/collections/:collectionId/words/publication", requireAuth, requireAdmin, updateCollectionWordsPublication);
 app.patch("/admin/words/:wordId/publication", requireAuth, requireAdmin, updateWordPublication);
 app.patch("/admin/words/:wordId", requireAuth, requireAdmin, updateAdminWord);
 app.post("/admin/words/:wordId/media", requireAuth, requireAdmin, createAdminMedia);
