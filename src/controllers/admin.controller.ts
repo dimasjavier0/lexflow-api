@@ -1,13 +1,13 @@
 import type { Request, Response } from "express";
-import { spawn } from "node:child_process";
-import fs from "node:fs/promises";
-import { existsSync } from "node:fs";
 import path from "node:path";
-import { once } from "node:events";
 import dotenv from "dotenv";
 import { z } from "zod";
 import { prisma } from "../db/prisma.js";
-import { uploadDirectory } from "../middleware/image-upload.js";
+import { publicBaseUrl } from "../lib/public-url.js";
+import { isPrismaError } from "../lib/prisma-errors.js";
+import { isUuid } from "../lib/validation.js";
+import { generatePiperAudio } from "../services/piper.js";
+import { findPixabayImages, searchPixabay } from "../services/pixabay.js";
 
 dotenv.config({ path: path.resolve(process.cwd(), ".env"), override: true });
 
@@ -49,6 +49,32 @@ const bulkWordsSchema = z.object({
   collectionSlug: z.string().trim().min(1).max(100).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).optional(),
 });
 
+/** Shape of a word as the admin UI consumes it. */
+const adminWordSelect = {
+  id: true,
+  term: true,
+  translationEs: true,
+  level: true,
+  isPublished: true,
+  images: { orderBy: { position: "asc" }, select: { id: true, url: true } },
+  audios: { orderBy: { position: "asc" }, select: { id: true, url: true, voice: true, accent: true, provider: true } },
+  videos: { orderBy: { position: "asc" }, select: { id: true, url: true } },
+} as const;
+
+type NewImage = { url: string; source: "pixabay" | "manual"; attribution?: string; metadata?: Record<string, unknown> };
+
+function toImageRows(wordId: string, images: NewImage[]) {
+  return images.map((image, index) => ({
+    wordId,
+    url: image.url,
+    source: image.source,
+    provider: image.source === "pixabay" ? "Pixabay" : undefined,
+    attribution: image.attribution,
+    metadata: image.metadata ? JSON.parse(JSON.stringify(image.metadata)) : undefined,
+    position: index,
+  }));
+}
+
 const publicationSchema = z.object({ isPublished: z.boolean() });
 const mediaSchema = z.object({
   type: z.enum(["image", "audio", "video"]),
@@ -69,8 +95,6 @@ const fillMissingConfirmSchema = z.object({
   })).max(50),
 });
 
-const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
 async function translateTerm(term: string): Promise<string> {
   try {
     const response = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(term)}&langpair=en|es`);
@@ -78,20 +102,6 @@ async function translateTerm(term: string): Promise<string> {
     return body.responseData?.translatedText?.trim() || term;
   } catch {
     return term;
-  }
-}
-
-async function searchPixabayImages(term: string): Promise<Array<{ id: number; url: string; pageUrl: string; tags: string; user: string }>> {
-  const apiKey = process.env.PIXABAY_API_KEY;
-  if (!apiKey) return [];
-  const params = new URLSearchParams({ key: apiKey, q: term, lang: "en", image_type: "photo", orientation: "horizontal", safesearch: "true", per_page: "2", page: "1" });
-  try {
-    const response = await fetch(`https://pixabay.com/api/?${params.toString()}`);
-    if (!response.ok) return [];
-    const body = await response.json() as { hits?: Array<{ id: number; webformatURL: string; pageURL: string; tags: string; user: string }> };
-    return (body.hits ?? []).map((image) => ({ id: image.id, url: image.webformatURL, pageUrl: image.pageURL, tags: image.tags, user: image.user }));
-  } catch {
-    return [];
   }
 }
 
@@ -110,24 +120,17 @@ export async function searchAdminPixabay(request: Request, response: Response): 
     return;
   }
 
-  const apiKey = process.env.PIXABAY_API_KEY;
-  if (!apiKey) {
+  const result = await searchPixabay(parsed.data.q, { page: parsed.data.page, perPage: 4 });
+  if (result.status === "unconfigured") {
     response.status(503).json({ message: "Pixabay is not configured" });
     return;
   }
-
-  const params = new URLSearchParams({ key: apiKey, q: parsed.data.q, lang: "en", image_type: "photo", orientation: "horizontal", safesearch: "true", per_page: "4", page: String(parsed.data.page) });
-  const pixabayResponse = await fetch(`https://pixabay.com/api/?${params.toString()}`);
-  if (!pixabayResponse.ok) {
+  if (result.status === "failed") {
     response.status(502).json({ message: "Pixabay search failed" });
     return;
   }
 
-  const body = await pixabayResponse.json() as { totalHits?: number; hits?: Array<{ id: number; previewURL: string; webformatURL: string; pageURL: string; tags: string; user: string }> };
-  response.status(200).json({
-    totalHits: body.totalHits ?? 0,
-    images: (body.hits ?? []).map((image) => ({ id: image.id, previewUrl: image.previewURL, url: image.webformatURL, pageUrl: image.pageURL, tags: image.tags, user: image.user })),
-  });
+  response.status(200).json({ totalHits: result.totalHits, images: result.images });
 }
 
 export async function createAdminCollection(request: Request, response: Response): Promise<void> {
@@ -141,7 +144,7 @@ export async function createAdminCollection(request: Request, response: Response
     const collection = await prisma.collection.create({ data: parsed.data });
     response.status(201).json({ collection });
   } catch (error) {
-    if (error instanceof Error && error.message.includes("Unique constraint")) {
+    if (isPrismaError(error, "P2002")) {
       response.status(409).json({ message: "Collection slug already exists" });
       return;
     }
@@ -151,7 +154,7 @@ export async function createAdminCollection(request: Request, response: Response
 
 export async function listAdminWords(request: Request, response: Response): Promise<void> {
   const collectionId = request.params.collectionId;
-  if (typeof collectionId !== "string" || !uuidPattern.test(collectionId)) {
+  if (!isUuid(collectionId)) {
     response.status(400).json({ message: "Invalid collection id" });
     return;
   }
@@ -162,16 +165,7 @@ export async function listAdminWords(request: Request, response: Response): Prom
     select: {
       position: true,
       word: {
-        select: {
-          id: true,
-          term: true,
-          translationEs: true,
-          level: true,
-          isPublished: true,
-          images: { orderBy: { position: "asc" }, select: { id: true, url: true } },
-          audios: { orderBy: { position: "asc" }, select: { id: true, url: true, voice: true, accent: true, provider: true } },
-          videos: { orderBy: { position: "asc" }, select: { id: true, url: true } },
-        },
+        select: adminWordSelect,
       },
     },
   });
@@ -181,7 +175,7 @@ export async function listAdminWords(request: Request, response: Response): Prom
 
 export async function createAdminWord(request: Request, response: Response): Promise<void> {
   const collectionId = request.params.collectionId;
-  if (typeof collectionId !== "string" || !uuidPattern.test(collectionId)) {
+  if (!isUuid(collectionId)) {
     response.status(400).json({ message: "Invalid collection id" });
     return;
   }
@@ -198,13 +192,11 @@ export async function createAdminWord(request: Request, response: Response): Pro
     return;
   }
 
+  // Words are shared between collections: reusing a term refreshes its
+  // translation and level but must not unpublish it elsewhere.
   const word = await prisma.word.upsert({
     where: { term: parsed.data.term },
-    update: {
-      translationEs: parsed.data.translationEs,
-      level: parsed.data.level,
-      isPublished: parsed.data.isPublished ?? false,
-    },
+    update: { translationEs: parsed.data.translationEs, level: parsed.data.level },
     create: {
       term: parsed.data.term,
       translationEs: parsed.data.translationEs,
@@ -228,16 +220,9 @@ export async function createAdminWord(request: Request, response: Response): Pro
   });
 
   if (parsed.data.images?.length) {
+    const existingImages = await prisma.image.count({ where: { wordId: word.id } });
     await prisma.image.createMany({
-      data: parsed.data.images.map((image, index) => ({
-        wordId: word.id,
-        url: image.url,
-        source: image.source,
-        provider: image.source === "pixabay" ? "Pixabay" : undefined,
-        attribution: image.attribution,
-        metadata: image.metadata ? JSON.parse(JSON.stringify(image.metadata)) : undefined,
-        position: index,
-      })),
+      data: toImageRows(word.id, parsed.data.images).map((row) => ({ ...row, position: existingImages + row.position })),
     });
   }
 
@@ -246,16 +231,7 @@ export async function createAdminWord(request: Request, response: Response): Pro
     select: {
       position: true,
       word: {
-        select: {
-          id: true,
-          term: true,
-          translationEs: true,
-          level: true,
-          isPublished: true,
-          images: { orderBy: { position: "asc" }, select: { id: true, url: true } },
-          audios: { orderBy: { position: "asc" }, select: { id: true, url: true, voice: true, accent: true, provider: true } },
-          videos: { orderBy: { position: "asc" }, select: { id: true, url: true } },
-        },
+        select: adminWordSelect,
       },
     },
   });
@@ -265,7 +241,7 @@ export async function createAdminWord(request: Request, response: Response): Pro
 
 export async function createAdminWordsBulk(request: Request, response: Response): Promise<void> {
   const collectionId = request.params.collectionId;
-  if (typeof collectionId !== "string" || (collectionId !== "new" && !uuidPattern.test(collectionId))) {
+  if (collectionId !== "new" && !isUuid(collectionId)) {
     response.status(400).json({ message: "Invalid collection id" });
     return;
   }
@@ -329,20 +305,20 @@ export async function createAdminWordsBulk(request: Request, response: Response)
   for (const word of result.words) {
     const translationEs = terms.find((item) => item.term.toLowerCase() === word.term.toLowerCase())?.translationEs ?? await translateTerm(word.term);
     await prisma.word.update({ where: { id: word.id }, data: { translationEs } });
-    const images = await searchPixabayImages(word.term);
+    const images = await findPixabayImages(word.term);
     if (images.length) await prisma.image.createMany({ data: images.map((image, index) => ({ wordId: word.id, url: image.url, source: "pixabay", provider: "Pixabay", attribution: `Pixabay: ${image.user}`, metadata: { id: image.id, pageUrl: image.pageUrl, tags: image.tags }, position: index })) });
     try {
-      const audio = await generatePiperAudio(request, word.id, word.term, "US");
+      const audio = await generatePiperAudio(publicBaseUrl(request), word.id, word.term, "US");
       await prisma.audio.create({ data: { wordId: word.id, ...audio } });
     } catch { failedAudio += 1; }
-    enrichedWords.push(await prisma.word.findUniqueOrThrow({ where: { id: word.id }, select: { id: true, term: true, translationEs: true, level: true, isPublished: true, images: { orderBy: { position: "asc" }, select: { id: true, url: true } }, audios: { orderBy: { position: "asc" }, select: { id: true, url: true, voice: true, accent: true, provider: true } }, videos: { orderBy: { position: "asc" }, select: { id: true, url: true } } } }));
+    enrichedWords.push(await prisma.word.findUniqueOrThrow({ where: { id: word.id }, select: adminWordSelect }));
   }
   response.status(201).json({ ...result, words: enrichedWords, failedAudio, collectionId: targetCollectionId });
 }
 
 export async function fillMissingAdminImages(request: Request, response: Response): Promise<void> {
   const collectionId = request.params.collectionId;
-  if (typeof collectionId !== "string" || !uuidPattern.test(collectionId)) {
+  if (!isUuid(collectionId)) {
     response.status(400).json({ message: "Invalid collection id" });
     return;
   }
@@ -351,10 +327,10 @@ export async function fillMissingAdminImages(request: Request, response: Respons
   const missing = words.filter(({ word }) => word._count.images === 0 || word._count.audios === 0);
   const previews: Array<{ wordId: string; term: string; images: Array<{ url: string; attribution: string; metadata: Record<string, unknown> }>; audio: { url: string; provider: string; voice: string; accent: string; metadata: Record<string, unknown> } | null }> = [];
   for (const item of missing) {
-    const images = await searchPixabayImages(item.word.term);
+    const images = await findPixabayImages(item.word.term);
     let audio = null;
     if (item.word._count.audios === 0) {
-      try { audio = await generatePiperAudio(request, item.word.id, item.word.term, "US"); } catch { audio = null; }
+      try { audio = await generatePiperAudio(publicBaseUrl(request), item.word.id, item.word.term, "US"); } catch { audio = null; }
     }
     previews.push({ wordId: item.word.id, term: item.word.term, images: item.word._count.images === 0 ? images.slice(0, 2).map((image) => ({ url: image.url, attribution: `Pixabay: ${image.user}`, metadata: { id: image.id, pageUrl: image.pageUrl, tags: image.tags } })) : [], audio });
   }
@@ -364,7 +340,7 @@ export async function fillMissingAdminImages(request: Request, response: Respons
 export async function confirmMissingAdminImages(request: Request, response: Response): Promise<void> {
   const collectionId = request.params.collectionId;
   const parsed = fillMissingConfirmSchema.safeParse(request.body);
-  if (typeof collectionId !== "string" || !uuidPattern.test(collectionId) || !parsed.success) { response.status(400).json({ message: "Invalid maintenance preview" }); return; }
+  if (!isUuid(collectionId) || !parsed.success) { response.status(400).json({ message: "Invalid maintenance preview" }); return; }
   const allowed = new Set((await prisma.collectionWord.findMany({ where: { collectionId }, select: { wordId: true } })).map((item) => item.wordId));
   let saved = 0;
   for (const item of parsed.data.items) {
@@ -381,7 +357,7 @@ export async function confirmMissingAdminImages(request: Request, response: Resp
 export async function updateCollectionPublication(request: Request, response: Response): Promise<void> {
   const collectionId = request.params.collectionId;
   const parsed = publicationSchema.safeParse(request.body);
-  if (typeof collectionId !== "string" || !uuidPattern.test(collectionId) || !parsed.success) {
+  if (!isUuid(collectionId) || !parsed.success) {
     response.status(400).json({ message: "Invalid publication data" });
     return;
   }
@@ -393,7 +369,7 @@ export async function updateCollectionPublication(request: Request, response: Re
 export async function updateWordPublication(request: Request, response: Response): Promise<void> {
   const wordId = request.params.wordId;
   const parsed = publicationSchema.safeParse(request.body);
-  if (typeof wordId !== "string" || !uuidPattern.test(wordId) || !parsed.success) {
+  if (!isUuid(wordId) || !parsed.success) {
     response.status(400).json({ message: "Invalid publication data" });
     return;
   }
@@ -405,7 +381,7 @@ export async function updateWordPublication(request: Request, response: Response
 export async function updateCollectionWordsPublication(request: Request, response: Response): Promise<void> {
   const collectionId = request.params.collectionId;
   const parsed = publicationSchema.safeParse(request.body);
-  if (typeof collectionId !== "string" || !uuidPattern.test(collectionId) || !parsed.success) {
+  if (!isUuid(collectionId) || !parsed.success) {
     response.status(400).json({ message: "Invalid publication data" });
     return;
   }
@@ -420,7 +396,7 @@ export async function updateCollectionWordsPublication(request: Request, respons
 export async function updateAdminWord(request: Request, response: Response): Promise<void> {
   const wordId = request.params.wordId;
   const parsed = wordSchema.partial().safeParse(request.body);
-  if (typeof wordId !== "string" || !uuidPattern.test(wordId) || !parsed.success) {
+  if (!isUuid(wordId) || !parsed.success) {
     response.status(400).json({ message: "Invalid word data", issues: parsed.success ? undefined : parsed.error.issues });
     return;
   }
@@ -440,32 +416,16 @@ export async function updateAdminWord(request: Request, response: Response): Pro
       const existingUrls = new Set(existingImages.map((image) => image.url));
       const newImages = images.filter((image) => !existingUrls.has(image.url));
       if (newImages.length) {
+        const existingCount = await transaction.image.count({ where: { wordId } });
         await transaction.image.createMany({
-          data: newImages.map((image, index) => ({
-            wordId,
-            url: image.url,
-            source: image.source,
-            provider: image.source === "pixabay" ? "Pixabay" : undefined,
-            attribution: image.attribution,
-            metadata: image.metadata ? JSON.parse(JSON.stringify(image.metadata)) : undefined,
-            position: index,
-          })),
+          data: toImageRows(wordId, newImages).map((row) => ({ ...row, position: existingCount + row.position })),
         });
       }
     }
 
     return transaction.word.findUniqueOrThrow({
       where: { id: updatedWord.id },
-      select: {
-        id: true,
-        term: true,
-        translationEs: true,
-        level: true,
-        isPublished: true,
-        images: { orderBy: { position: "asc" }, select: { id: true, url: true } },
-          audios: { orderBy: { position: "asc" }, select: { id: true, url: true, voice: true, accent: true, provider: true } },
-        videos: { orderBy: { position: "asc" }, select: { id: true, url: true } },
-      },
+      select: adminWordSelect,
     });
   });
   response.status(200).json({ word });
@@ -474,7 +434,7 @@ export async function updateAdminWord(request: Request, response: Response): Pro
 export async function createAdminMedia(request: Request, response: Response): Promise<void> {
   const wordId = request.params.wordId;
   const parsed = mediaSchema.safeParse(request.body);
-  if (typeof wordId !== "string" || !uuidPattern.test(wordId) || !parsed.success) {
+  if (!isUuid(wordId) || !parsed.success) {
     response.status(400).json({ message: "Invalid media data", issues: parsed.success ? undefined : parsed.error.issues });
     return;
   }
@@ -497,7 +457,7 @@ export async function createAdminMedia(request: Request, response: Response): Pr
 
 export async function uploadAdminImage(request: Request, response: Response): Promise<void> {
   const wordId = request.params.wordId;
-  if (typeof wordId !== "string" || !uuidPattern.test(wordId) || !request.file) {
+  if (!isUuid(wordId) || !request.file) {
     response.status(400).json({ message: "An image file is required" });
     return;
   }
@@ -508,11 +468,10 @@ export async function uploadAdminImage(request: Request, response: Response): Pr
     return;
   }
 
-  const apiUrl = `${request.protocol}://${request.get("host")}`;
   const image = await prisma.image.create({
     data: {
       wordId,
-      url: `${apiUrl}/uploads/${request.file.filename}`,
+      url: `${publicBaseUrl(request)}/uploads/${request.file.filename}`,
       source: "local-upload",
       metadata: { originalName: request.file.originalname, mimeType: request.file.mimetype },
     },
@@ -523,7 +482,7 @@ export async function uploadAdminImage(request: Request, response: Response): Pr
 
 export async function deleteAdminImage(request: Request, response: Response): Promise<void> {
   const imageId = request.params.imageId;
-  if (typeof imageId !== "string" || !uuidPattern.test(imageId)) {
+  if (!isUuid(imageId)) {
     response.status(400).json({ message: "Invalid image id" });
     return;
   }
@@ -540,7 +499,7 @@ export async function deleteAdminImage(request: Request, response: Response): Pr
 
 export async function deleteAdminVideo(request: Request, response: Response): Promise<void> {
   const videoId = request.params.videoId;
-  if (typeof videoId !== "string" || !uuidPattern.test(videoId)) {
+  if (!isUuid(videoId)) {
     response.status(400).json({ message: "Invalid video id" });
     return;
   }
@@ -557,7 +516,7 @@ export async function deleteAdminVideo(request: Request, response: Response): Pr
 
 export async function deleteAdminAudio(request: Request, response: Response): Promise<void> {
   const audioId = request.params.audioId;
-  if (typeof audioId !== "string" || !uuidPattern.test(audioId)) {
+  if (!isUuid(audioId)) {
     response.status(400).json({ message: "Invalid audio id" });
     return;
   }
@@ -575,7 +534,7 @@ export async function deleteAdminAudio(request: Request, response: Response): Pr
 export async function updateAdminCollection(request: Request, response: Response): Promise<void> {
   const collectionId = request.params.collectionId;
   const parsed = editCollectionSchema.safeParse(request.body);
-  if (typeof collectionId !== "string" || !uuidPattern.test(collectionId) || !parsed.success) {
+  if (!isUuid(collectionId) || !parsed.success) {
     response.status(400).json({ message: "Invalid collection data", issues: parsed.success ? undefined : parsed.error.issues });
     return;
   }
@@ -584,44 +543,10 @@ export async function updateAdminCollection(request: Request, response: Response
   response.status(200).json({ collection });
 }
 
-async function generatePiperAudio(request: Request, wordId: string, term: string, accent: "US" | "UK") {
-  const piperPath = process.env.PIPER_PATH ?? "piper";
-  const configuredModelPath = accent === "UK" ? process.env.PIPER_VOICE_MODEL_UK : process.env.PIPER_VOICE_MODEL_US;
-  const modelCandidates = configuredModelPath ? [
-    path.isAbsolute(configuredModelPath) ? configuredModelPath : path.resolve(process.cwd(), configuredModelPath),
-    path.isAbsolute(configuredModelPath) ? configuredModelPath : path.resolve(process.cwd(), "../..", configuredModelPath),
-  ] : [];
-  const modelPath = modelCandidates.find((candidate) => existsSync(candidate));
-  if (!modelPath) {
-    throw new Error(`No se encontró el modelo Piper configurado: ${configuredModelPath ?? "sin ruta"}`);
-  }
-
-  const filename = `audio-${wordId}-${Date.now()}.wav`;
-  const outputPath = path.join(uploadDirectory, filename);
-  try {
-    const child = spawn(piperPath, ["--model", modelPath, "--output_file", outputPath], { windowsHide: true });
-    let stderr = "";
-    child.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
-    const processError = new Promise<Error>((_, reject) => child.once("error", reject));
-    const processClose = once(child, "close").then(([exitCode]) => {
-      if (exitCode !== 0) throw new Error(stderr.trim() || `Piper terminó con código ${exitCode}`);
-    });
-    child.stdin.write(`${term}\n`);
-    child.stdin.end();
-    await Promise.race([processClose, processError]);
-  } catch (error) {
-    await fs.rm(outputPath, { force: true });
-    throw new Error(error instanceof Error ? `No se pudo generar el audio: ${error.message}` : "No se pudo generar el audio.");
-  }
-
-  const apiUrl = `${request.protocol}://${request.get("host")}`;
-  return { url: `${apiUrl}/uploads/${filename}`, provider: "piper", voice: accent === "UK" ? "en_GB" : "en_US", accent, metadata: { text: term, filename } };
-}
-
 export async function generateAdminAudio(request: Request, response: Response): Promise<void> {
   const wordId = request.params.wordId;
   const parsed = generateAudioSchema.safeParse(request.body);
-  if (typeof wordId !== "string" || !uuidPattern.test(wordId) || !parsed.success) {
+  if (!isUuid(wordId) || !parsed.success) {
     response.status(400).json({ message: "Invalid audio generation data" });
     return;
   }
@@ -633,7 +558,7 @@ export async function generateAdminAudio(request: Request, response: Response): 
   }
 
   try {
-    const generated = await generatePiperAudio(request, word.id, word.term, parsed.data.accent);
+    const generated = await generatePiperAudio(publicBaseUrl(request), word.id, word.term, parsed.data.accent);
     const audio = await prisma.audio.create({ data: { wordId: word.id, ...generated } });
   response.status(201).json({ audio });
   } catch (error) {

@@ -1,18 +1,17 @@
 import type { Request, Response } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma.js";
+import { isUuid } from "../lib/validation.js";
 
 const progressBodySchema = z.object({
   status: z.enum(["WANT_TO_LEARN", "NOT_INTERESTED", "LEARNED"]),
 });
 
-const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
 export async function updateProgress(request: Request, response: Response): Promise<void> {
   const user = request.authUser;
   const wordId = request.params.wordId;
 
-  if (!user || typeof wordId !== "string" || !uuidPattern.test(wordId)) {
+  if (!user || !isUuid(wordId)) {
     response.status(400).json({ message: "Invalid word id" });
     return;
   }

@@ -1,0 +1,40 @@
+import { spawn } from "node:child_process";
+import { once } from "node:events";
+import { existsSync } from "node:fs";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { uploadDirectory } from "../middlewares/image-upload.js";
+
+/** Synthesizes `term` with Piper into the uploads directory and returns the Audio row fields. */
+export async function generatePiperAudio(baseUrl: string, wordId: string, term: string, accent: "US" | "UK") {
+  const piperPath = process.env.PIPER_PATH ?? "piper";
+  const configuredModelPath = accent === "UK" ? process.env.PIPER_VOICE_MODEL_UK : process.env.PIPER_VOICE_MODEL_US;
+  const modelCandidates = configuredModelPath ? [
+    path.isAbsolute(configuredModelPath) ? configuredModelPath : path.resolve(process.cwd(), configuredModelPath),
+    path.isAbsolute(configuredModelPath) ? configuredModelPath : path.resolve(process.cwd(), "../..", configuredModelPath),
+  ] : [];
+  const modelPath = modelCandidates.find((candidate) => existsSync(candidate));
+  if (!modelPath) {
+    throw new Error(`No se encontró el modelo Piper configurado: ${configuredModelPath ?? "sin ruta"}`);
+  }
+
+  const filename = `audio-${wordId}-${Date.now()}.wav`;
+  const outputPath = path.join(uploadDirectory, filename);
+  try {
+    const child = spawn(piperPath, ["--model", modelPath, "--output_file", outputPath], { windowsHide: true });
+    let stderr = "";
+    child.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
+    const processError = new Promise<Error>((_, reject) => child.once("error", reject));
+    const processClose = once(child, "close").then(([exitCode]) => {
+      if (exitCode !== 0) throw new Error(stderr.trim() || `Piper terminó con código ${exitCode}`);
+    });
+    child.stdin.write(`${term}\n`);
+    child.stdin.end();
+    await Promise.race([processClose, processError]);
+  } catch (error) {
+    await fs.rm(outputPath, { force: true });
+    throw new Error(error instanceof Error ? `No se pudo generar el audio: ${error.message}` : "No se pudo generar el audio.");
+  }
+
+  return { url: `${baseUrl}/uploads/${filename}`, provider: "piper", voice: accent === "UK" ? "en_GB" : "en_US", accent, metadata: { text: term, filename } };
+}
