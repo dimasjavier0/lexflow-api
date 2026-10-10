@@ -3,11 +3,15 @@ import {
   confirmMissingAdminImages,
   createAdminCollection,
   createAdminMedia,
+  createAdminRelation,
+  createAdminSentence,
   createAdminWord,
   createAdminWordsBulk,
   deleteAdminAudio,
   deleteAdminCollection,
   deleteAdminImage,
+  deleteAdminRelation,
+  deleteAdminSentence,
   deleteAdminVideo,
   fillMissingAdminImages,
   generateAdminAudio,
@@ -50,11 +54,15 @@ adminRouter.post("/collections/:collectionId/images/fill-missing/confirm", confi
 adminRouter.patch("/words/:wordId", updateAdminWord);
 adminRouter.patch("/words/:wordId/publication", updateWordPublication);
 adminRouter.post("/words/:wordId/media", createAdminMedia);
+adminRouter.post("/words/:wordId/sentences", createAdminSentence);
+adminRouter.post("/words/:wordId/relations", createAdminRelation);
 adminRouter.post("/words/:wordId/images", imageUpload.single("image"), uploadAdminImage);
 adminRouter.post("/words/:wordId/audio/generate", externalWorkLimit, generateAdminAudio);
 
 adminRouter.delete("/images/:imageId", deleteAdminImage);
 adminRouter.delete("/videos/:videoId", deleteAdminVideo);
 adminRouter.delete("/audios/:audioId", deleteAdminAudio);
+adminRouter.delete("/sentences/:sentenceId", deleteAdminSentence);
+adminRouter.delete("/relations/:relationId", deleteAdminRelation);
 
 adminRouter.get("/pixabay/images", externalWorkLimit, searchAdminPixabay);

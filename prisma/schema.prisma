@@ -21,6 +21,28 @@ enum CefrLevel {
   C2
 }
 
+enum PartOfSpeech {
+  NOUN
+  VERB
+  ADJECTIVE
+  ADVERB
+  PRONOUN
+  PREPOSITION
+  CONJUNCTION
+  DETERMINER
+  INTERJECTION
+  PHRASE
+}
+
+enum WordRelationshipType {
+  SYNONYM
+  ANTONYM
+  DERIVED
+  COLLOCATION
+  PHRASAL
+  RELATED
+}
+
 enum LearningStatus {
   WANT_TO_LEARN
   NOT_INTERESTED
@@ -56,6 +78,9 @@ model Word {
   term          String             @unique
   translationEs String
   level         CefrLevel          @default(A1)
+  partOfSpeech  PartOfSpeech?
+  /// Posición en un corpus de frecuencia (1 = la palabra más usada).
+  frequencyRank Int?
   isPublished   Boolean            @default(false)
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
@@ -63,6 +88,9 @@ model Word {
   images        Image[]
   audios        Audio[]
   videos        Video[]
+  sentences     ExampleSentence[]
+  relationsFrom WordRelationship[] @relation("RelationSource")
+  relationsTo   WordRelationship[] @relation("RelationTarget")
   progress      UserWordProgress[]
 
   @@index([level, isPublished])
@@ -128,6 +156,33 @@ model Video {
   word        Word     @relation(fields: [wordId], references: [id], onDelete: Cascade)
 
   @@index([wordId, position])
+}
+
+model ExampleSentence {
+  id            String   @id @default(uuid()) @db.Uuid
+  wordId        String   @db.Uuid
+  text          String
+  translationEs String?
+  position      Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  word          Word     @relation(fields: [wordId], references: [id], onDelete: Cascade)
+
+  @@index([wordId, position])
+}
+
+/// Relación dirigida entre dos palabras (source → target).
+model WordRelationship {
+  id           String               @id @default(uuid()) @db.Uuid
+  sourceWordId String               @db.Uuid
+  targetWordId String               @db.Uuid
+  type         WordRelationshipType
+  createdAt    DateTime             @default(now())
+  source       Word                 @relation("RelationSource", fields: [sourceWordId], references: [id], onDelete: Cascade)
+  target       Word                 @relation("RelationTarget", fields: [targetWordId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceWordId, targetWordId, type])
+  @@index([targetWordId])
 }
 
 model UserWordProgress {

@@ -69,6 +69,13 @@ export async function getCollection(request: Request, response: Response): Promi
               term: true,
               translationEs: true,
               level: true,
+              partOfSpeech: true,
+              sentences: { orderBy: [{ position: "asc" }, { createdAt: "asc" }], select: { id: true, text: true, translationEs: true } },
+              relationsFrom: {
+                where: { target: { isPublished: true } },
+                orderBy: { createdAt: "asc" },
+                select: { id: true, type: true, target: { select: { term: true, translationEs: true } } },
+              },
               images: { orderBy: { position: "asc" } },
               audios: { orderBy: { position: "asc" } },
               videos: { orderBy: { position: "asc" } },

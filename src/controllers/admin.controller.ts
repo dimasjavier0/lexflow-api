@@ -29,6 +29,8 @@ const wordSchema = z.object({
   term: z.string().trim().min(1).max(100),
   translationEs: z.string().trim().min(1).max(200),
   level: z.enum(["A1", "A2", "B1", "B2", "C1", "C2"]).default("A1"),
+  partOfSpeech: z.enum(["NOUN", "VERB", "ADJECTIVE", "ADVERB", "PRONOUN", "PREPOSITION", "CONJUNCTION", "DETERMINER", "INTERJECTION", "PHRASE"]).nullable().optional(),
+  frequencyRank: z.number().int().min(1).max(1_000_000).nullable().optional(),
   images: z.array(z.object({
     url: z.string().url(),
     source: z.enum(["pixabay", "manual"]).default("pixabay"),
@@ -56,6 +58,10 @@ const adminWordSelect = {
   translationEs: true,
   level: true,
   isPublished: true,
+  partOfSpeech: true,
+  frequencyRank: true,
+  sentences: { orderBy: { position: "asc" }, select: { id: true, text: true, translationEs: true } },
+  relationsFrom: { orderBy: { createdAt: "asc" }, select: { id: true, type: true, target: { select: { id: true, term: true } } } },
   images: { orderBy: { position: "asc" }, select: { id: true, url: true } },
   audios: { orderBy: { position: "asc" }, select: { id: true, url: true, voice: true, accent: true, provider: true } },
   videos: { orderBy: { position: "asc" }, select: { id: true, url: true } },
@@ -74,6 +80,16 @@ function toImageRows(wordId: string, images: NewImage[]) {
     position: index,
   }));
 }
+
+const sentenceSchema = z.object({
+  text: z.string().trim().min(1).max(300),
+  translationEs: z.string().trim().max(300).nullable().optional(),
+});
+
+const relationSchema = z.object({
+  term: z.string().trim().min(1).max(100),
+  type: z.enum(["SYNONYM", "ANTONYM", "DERIVED", "COLLOCATION", "PHRASAL", "RELATED"]),
+});
 
 const publicationSchema = z.object({ isPublished: z.boolean() });
 const mediaSchema = z.object({
@@ -196,11 +212,13 @@ export async function createAdminWord(request: Request, response: Response): Pro
   // translation and level but must not unpublish it elsewhere.
   const word = await prisma.word.upsert({
     where: { term: parsed.data.term },
-    update: { translationEs: parsed.data.translationEs, level: parsed.data.level },
+    update: { translationEs: parsed.data.translationEs, level: parsed.data.level, partOfSpeech: parsed.data.partOfSpeech, frequencyRank: parsed.data.frequencyRank },
     create: {
       term: parsed.data.term,
       translationEs: parsed.data.translationEs,
       level: parsed.data.level,
+      partOfSpeech: parsed.data.partOfSpeech,
+      frequencyRank: parsed.data.frequencyRank,
       isPublished: parsed.data.isPublished ?? false,
     },
   });
@@ -511,6 +529,75 @@ export async function deleteAdminVideo(request: Request, response: Response): Pr
   }
 
   await prisma.video.delete({ where: { id: videoId } });
+  response.status(204).send();
+}
+
+export async function createAdminSentence(request: Request, response: Response): Promise<void> {
+  const wordId = request.params.wordId;
+  const parsed = sentenceSchema.safeParse(request.body);
+  if (!isUuid(wordId) || !parsed.success) {
+    response.status(400).json({ message: "Invalid sentence data" });
+    return;
+  }
+
+  const word = await prisma.word.findUnique({ where: { id: wordId }, select: { _count: { select: { sentences: true } } } });
+  if (!word) {
+    response.status(404).json({ message: "Word not found" });
+    return;
+  }
+
+  const sentence = await prisma.exampleSentence.create({
+    data: { wordId, text: parsed.data.text, translationEs: parsed.data.translationEs || null, position: word._count.sentences },
+    select: { id: true, text: true, translationEs: true },
+  });
+  response.status(201).json({ sentence });
+}
+
+export async function deleteAdminSentence(request: Request, response: Response): Promise<void> {
+  const sentenceId = request.params.sentenceId;
+  if (!isUuid(sentenceId)) {
+    response.status(400).json({ message: "Invalid sentence id" });
+    return;
+  }
+
+  await prisma.exampleSentence.delete({ where: { id: sentenceId } });
+  response.status(204).send();
+}
+
+export async function createAdminRelation(request: Request, response: Response): Promise<void> {
+  const wordId = request.params.wordId;
+  const parsed = relationSchema.safeParse(request.body);
+  if (!isUuid(wordId) || !parsed.success) {
+    response.status(400).json({ message: "Invalid relationship data" });
+    return;
+  }
+
+  const target = await prisma.word.findFirst({ where: { term: { equals: parsed.data.term, mode: "insensitive" } }, select: { id: true } });
+  if (!target) {
+    response.status(404).json({ message: "Related word not found" });
+    return;
+  }
+  if (target.id === wordId) {
+    response.status(400).json({ message: "A word cannot be related to itself" });
+    return;
+  }
+
+  // A duplicate (same pair and type) surfaces as a 409 through the unique constraint.
+  const relation = await prisma.wordRelationship.create({
+    data: { sourceWordId: wordId, targetWordId: target.id, type: parsed.data.type },
+    select: { id: true, type: true, target: { select: { id: true, term: true } } },
+  });
+  response.status(201).json({ relation });
+}
+
+export async function deleteAdminRelation(request: Request, response: Response): Promise<void> {
+  const relationId = request.params.relationId;
+  if (!isUuid(relationId)) {
+    response.status(400).json({ message: "Invalid relationship id" });
+    return;
+  }
+
+  await prisma.wordRelationship.delete({ where: { id: relationId } });
   response.status(204).send();
 }
 
