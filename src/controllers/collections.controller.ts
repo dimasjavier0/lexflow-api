@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { z } from "zod";
 import { prisma } from "../db/prisma.js";
 import { levelQuerySchema } from "../lib/validation.js";
 
@@ -92,4 +93,36 @@ export async function getCollection(request: Request, response: Response): Promi
   }
 
   response.status(200).json({ collection });
+}
+
+const wordSearchSchema = z.object({
+  q: z.string().trim().min(1).max(50),
+});
+
+const WORD_SEARCH_LIMIT = 8;
+
+/** Autocomplete: published words whose term starts with the query, most frequent first. */
+export async function searchWords(request: Request, response: Response): Promise<void> {
+  const parsed = wordSearchSchema.safeParse(request.query);
+  if (!parsed.success) {
+    response.status(400).json({ message: "Invalid search" });
+    return;
+  }
+
+  const inPublishedCollection = { collection: { isPublished: true } };
+  const words = await prisma.word.findMany({
+    where: { isPublished: true, term: { startsWith: parsed.data.q, mode: "insensitive" }, collections: { some: inPublishedCollection } },
+    orderBy: [{ frequencyRank: { sort: "asc", nulls: "last" } }, { term: "asc" }],
+    take: WORD_SEARCH_LIMIT,
+    select: {
+      id: true,
+      term: true,
+      level: true,
+      collections: { where: inPublishedCollection, take: 1, select: { collection: { select: { slug: true, name: true } } } },
+    },
+  });
+
+  response.status(200).json({
+    words: words.flatMap(({ collections, ...word }) => (collections[0] ? [{ ...word, collection: collections[0].collection }] : [])),
+  });
 }

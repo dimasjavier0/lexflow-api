@@ -1,7 +1,7 @@
 import "dotenv/config";
 import cors from "cors";
 import express from "express";
-import { getCollection, listCollections } from "./controllers/collections.controller.js";
+import { getCollection, listCollections, searchWords } from "./controllers/collections.controller.js";
 import { getHealth } from "./controllers/health.controller.js";
 import { getMe, getMyDashboard, updateMe } from "./controllers/me.controller.js";
 import { listProgress, summarizeProgress, updateProgress } from "./controllers/progress.controller.js";
@@ -25,6 +25,7 @@ app.get("/health", getHealth);
 app.use(rateLimit({ windowMs: 60_000, max: 300 }));
 app.get("/collections", listCollections);
 app.get("/collections/:slug", getCollection);
+app.get("/words/search", searchWords);
 app.get("/me", requireAuth, getMe);
 app.patch("/me", requireAuth, updateMe);
 app.get("/me/dashboard", requireAuth, getMyDashboard);
