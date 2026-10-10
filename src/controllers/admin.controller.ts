@@ -14,13 +14,14 @@ dotenv.config({ path: path.resolve(process.cwd(), ".env"), override: true });
 const collectionSchema = z.object({
   name: z.string().trim().min(1).max(100),
   slug: z.string().trim().min(1).max(100).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
-  description: z.string().trim().max(500).optional(),
+  description: z.string().trim().max(500).nullable().optional(),
   imageUrl: z.string().url().nullable().optional(),
   isPublished: z.boolean().optional(),
 });
 
 const editCollectionSchema = z.object({
   name: z.string().trim().min(1).max(100),
+  description: z.string().trim().max(500).nullable().optional(),
   imageUrl: z.string().url().nullable(),
 });
 
