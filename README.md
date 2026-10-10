@@ -56,6 +56,9 @@ URLs locales:
 - Colecciones y palabras publicadas desde el panel admin.
 - Progreso por palabra: querer aprender, no interesar y aprendida.
 - Recursos manuales de imagen, audio y video mediante URL.
+- Selección de nivel CEFR, lecciones que omiten las palabras ya conocidas y avance por colección.
+- Publicación por palabra; los estudiantes solo ven palabras publicadas.
+- Búsqueda de imágenes en Pixabay y eliminación de colecciones, palabras y recursos desde el panel.
 - Dashboard admin con tarjetas de acciones, colecciones expandibles y carga de imágenes por arrastre.
 - Editor reutilizable de palabras para crear y editar término, traducción, nivel, enlace de imagen y archivo arrastrado.
 - Manifest y service worker básicos para instalación como PWA.
@@ -63,6 +66,11 @@ URLs locales:
 Las imágenes arrastradas se guardan localmente en `apps/api/uploads/` y su URL queda registrada en PostgreSQL. Este almacenamiento está pensado para desarrollo local; producción deberá migrarlo a Supabase Storage o a un bucket S3-compatible.
 
 El panel admin requiere que el usuario tenga `role = 'ADMIN'` en la base PostgreSQL local.
+
+## Seguridad de la API
+
+- `CORS_ORIGINS` limita los orígenes web permitidos (lista separada por comas). Si está vacío se acepta cualquier origen, lo que solo es adecuado en desarrollo local.
+- La API limita cada IP a 300 peticiones por minuto, y a 30 por minuto en las rutas que llaman a Pixabay o ejecutan Piper. El contador vive en memoria: con más de una instancia hará falta un almacén compartido.
 
 ## Pronunciación local
 

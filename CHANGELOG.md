@@ -48,6 +48,10 @@ Los cambios relevantes del proyecto se registran aquí.
 - La app pública solo muestra y cuenta palabras publicadas; el panel permite publicar cada palabra o todas las de una colección.
 - El flujo de aprendizaje añade atajos de teclado, pantalla de fin de colección, reintentos y video embebido.
 - El selector de imágenes separa la búsqueda en Pixabay de las URL manuales, y el editor de palabras permite borrar sonidos.
+- Selección de nivel CEFR en inicio y lecciones (`?level=`), recordada entre visitas.
+- Las lecciones empiezan solo con las palabras pendientes y las tarjetas de inicio muestran el avance del estudiante.
+- El panel permite eliminar colecciones, quitar palabras de una colección y asociar audio por URL.
+- La API restringe CORS mediante `CORS_ORIGINS` y limita las peticiones por IP.
 
 ### Fixed
 
