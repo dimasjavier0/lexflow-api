@@ -1,43 +1,40 @@
 import "dotenv/config";
 import cors from "cors";
 import express from "express";
+import { getCollection, listCollections, searchWords } from "./controllers/collections.controller.js";
 import { getHealth } from "./controllers/health.controller.js";
-import { getMe } from "./controllers/me.controller.js";
-import { getCollection, listCollections } from "./controllers/collections.controller.js";
-import { listProgress, updateProgress } from "./controllers/progress.controller.js";
-import { createAdminCollection, createAdminMedia, createAdminWord, createAdminWordsBulk, deleteAdminImage, deleteAdminVideo, listAdminCollections, listAdminWords, updateAdminCollection, updateAdminWord, updateCollectionPublication, updateWordPublication, uploadAdminImage } from "./controllers/admin.controller.js";
-import { fillMissingAdminImages } from "./controllers/admin.controller.js";
+import { getMe, getMyDashboard, updateMe } from "./controllers/me.controller.js";
+import { listProgress, summarizeProgress, updateProgress } from "./controllers/progress.controller.js";
+import { listDueReviews, submitReview } from "./controllers/review.controller.js";
 import { errorHandler } from "./middlewares/error-handler.js";
-import { requireAdmin } from "./middlewares/require-admin.js";
+import { uploadDirectory } from "./middlewares/image-upload.js";
+import { rateLimit } from "./middlewares/rate-limit.js";
 import { requireAuth } from "./middlewares/require-auth.js";
-import { imageUpload, uploadDirectory } from "./middleware/image-upload.js";
+import { adminRouter } from "./routes/admin.routes.js";
 
 const app = express();
 const port = Number(process.env.API_PORT ?? 3000);
 
-app.use(cors());
+// Comma-separated list of allowed web origins. Unset (local development) allows any origin.
+const corsOrigins = (process.env.CORS_ORIGINS ?? "").split(",").map((origin) => origin.trim()).filter(Boolean);
+
+app.use(cors(corsOrigins.length ? { origin: corsOrigins } : undefined));
 app.use(express.json());
 app.use("/uploads", express.static(uploadDirectory));
 app.get("/health", getHealth);
+app.use(rateLimit({ windowMs: 60_000, max: 300 }));
 app.get("/collections", listCollections);
 app.get("/collections/:slug", getCollection);
+app.get("/words/search", searchWords);
 app.get("/me", requireAuth, getMe);
+app.patch("/me", requireAuth, updateMe);
+app.get("/me/dashboard", requireAuth, getMyDashboard);
 app.put("/progress/:wordId", requireAuth, updateProgress);
 app.get("/progress", requireAuth, listProgress);
-app.get("/admin/collections", requireAuth, requireAdmin, listAdminCollections);
-app.post("/admin/collections", requireAuth, requireAdmin, createAdminCollection);
-app.get("/admin/collections/:collectionId/words", requireAuth, requireAdmin, listAdminWords);
-app.post("/admin/collections/:collectionId/words", requireAuth, requireAdmin, createAdminWord);
-app.post("/admin/collections/:collectionId/words/bulk", requireAuth, requireAdmin, createAdminWordsBulk);
-app.post("/admin/collections/:collectionId/images/fill-missing", requireAuth, requireAdmin, fillMissingAdminImages);
-app.patch("/admin/collections/:collectionId", requireAuth, requireAdmin, updateAdminCollection);
-app.patch("/admin/collections/:collectionId/publication", requireAuth, requireAdmin, updateCollectionPublication);
-app.patch("/admin/words/:wordId/publication", requireAuth, requireAdmin, updateWordPublication);
-app.patch("/admin/words/:wordId", requireAuth, requireAdmin, updateAdminWord);
-app.post("/admin/words/:wordId/media", requireAuth, requireAdmin, createAdminMedia);
-app.post("/admin/words/:wordId/images", requireAuth, requireAdmin, imageUpload.single("image"), uploadAdminImage);
-app.delete("/admin/images/:imageId", requireAuth, requireAdmin, deleteAdminImage);
-app.delete("/admin/videos/:videoId", requireAuth, requireAdmin, deleteAdminVideo);
+app.get("/progress/summary", requireAuth, summarizeProgress);
+app.get("/reviews/due", requireAuth, listDueReviews);
+app.post("/reviews/:wordId", requireAuth, submitReview);
+app.use("/admin", adminRouter);
 app.use(errorHandler);
 
 app.listen(port, () => console.info(`LexFlow API listening on port ${port}`));

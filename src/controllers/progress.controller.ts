@@ -1,18 +1,17 @@
 import type { Request, Response } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma.js";
+import { isUuid, levelQuerySchema } from "../lib/validation.js";
 
 const progressBodySchema = z.object({
   status: z.enum(["WANT_TO_LEARN", "NOT_INTERESTED", "LEARNED"]),
 });
 
-const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
 export async function updateProgress(request: Request, response: Response): Promise<void> {
   const user = request.authUser;
   const wordId = request.params.wordId;
 
-  if (!user || typeof wordId !== "string" || !uuidPattern.test(wordId)) {
+  if (!user || !isUuid(wordId)) {
     response.status(400).json({ message: "Invalid word id" });
     return;
   }
@@ -50,4 +49,33 @@ export async function listProgress(request: Request, response: Response): Promis
   });
 
   response.status(200).json({ progress });
+}
+/** Learned-word count per published collection, for the progress shown on the home cards. */
+export async function summarizeProgress(request: Request, response: Response): Promise<void> {
+  const user = request.authUser;
+  if (!user) {
+    response.status(401).json({ message: "Authentication required" });
+    return;
+  }
+  const parsed = levelQuerySchema.safeParse(request.query);
+  if (!parsed.success) {
+    response.status(400).json({ message: "Invalid level" });
+    return;
+  }
+
+  const { level } = parsed.data;
+  const rows = await prisma.collectionWord.groupBy({
+    by: ["collectionId"],
+    where: {
+      collection: { isPublished: true },
+      word: {
+        isPublished: true,
+        ...(level ? { level } : {}),
+        progress: { some: { userId: user.id, status: "LEARNED" } },
+      },
+    },
+    _count: { _all: true },
+  });
+
+  response.status(200).json({ summary: rows.map((row) => ({ collectionId: row.collectionId, learned: row._count._all })) });
 }

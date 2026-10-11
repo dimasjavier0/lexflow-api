@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
+import { isUuid } from "../lib/validation.js";
 
 export type AuthenticatedUser = {
   id: string;
@@ -14,8 +15,6 @@ declare global {
     }
   }
 }
-
-const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function getSupabaseIssuer(): string | null {
   const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/$/, "");
@@ -60,7 +59,7 @@ export async function requireAuth(request: Request, response: Response, next: Ne
     const id = typeof payload.sub === "string" ? payload.sub : null;
     const email = typeof payload.email === "string" ? payload.email : null;
 
-    if (!id || !email || !uuidPattern.test(id)) {
+    if (!email || !isUuid(id)) {
       response.status(401).json({ message: "Invalid authentication claims" });
       return;
     }
