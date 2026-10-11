@@ -7,8 +7,36 @@ export type SrsUpdate = SrsState & { stage: "LEARNING" | "MASTERED"; nextReviewA
 /** Consecutive successful reviews after which a word counts as mastered. */
 export const MASTERED_AFTER_REPETITIONS = 4;
 
+/**
+ * How much help a review gives: 1 fills in half the word, 2 offers its letters to put in
+ * order, 3 mixes extra letters in and 4 is typed from memory.
+ */
+export const REVIEW_LEVELS = [1, 2, 3, 4] as const;
+export type ReviewLevel = (typeof REVIEW_LEVELS)[number];
+
+/** Each successful recall in a row removes some help; a failed one restarts at level 1. */
+export function reviewLevel(repetitions: number): ReviewLevel {
+  return REVIEW_LEVELS[Math.min(Math.max(repetitions, 0), REVIEW_LEVELS.length - 1)];
+}
+
 const MIN_EASE_FACTOR = 1.3;
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Reviews falling on each of the next `days` days of the learner's calendar, today first.
+ * Overdue and never-reviewed words count as today's. `tzOffsetMinutes` is what
+ * `Date.prototype.getTimezoneOffset()` reports: minutes behind UTC.
+ */
+export function upcomingReviews(nextReviewAt: Array<Date | null>, now: Date, tzOffsetMinutes: number, days = 7): number[] {
+  const localDay = (date: Date) => Math.floor((date.getTime() - tzOffsetMinutes * 60_000) / DAY_MS);
+  const today = localDay(now);
+  const counts = new Array<number>(days).fill(0);
+  for (const date of nextReviewAt) {
+    const daysAhead = date ? Math.max(0, localDay(date) - today) : 0;
+    if (daysAhead < days) counts[daysAhead] += 1;
+  }
+  return counts;
+}
 
 /** SM-2 grades answers from 0 to 5; anything below 3 is a failed recall. */
 const QUALITY: Record<ReviewResult, number> = { correct: 5, hard: 3, incorrect: 1 };

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "../db/prisma.js";
 import { isUuid } from "../lib/validation.js";
 import { levelProgress, pointsForReview, streakAfterActivity } from "../services/gamification.js";
-import { scheduleReview } from "../services/srs.js";
+import { reviewLevel, scheduleReview } from "../services/srs.js";
 
 const dueQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(20),
@@ -13,14 +13,18 @@ const reviewBodySchema = z.object({
   result: z.enum(["correct", "hard", "incorrect"]),
 });
 
-/** Words the learner asked to learn whose next review has arrived (or that were never reviewed). */
-function dueWhere(userId: string, now: Date) {
+/** Words the learner asked to learn that can still be reached through a published collection. */
+export function reviewableWhere(userId: string) {
   return {
     userId,
     status: "WANT_TO_LEARN" as const,
-    OR: [{ nextReviewAt: null }, { nextReviewAt: { lte: now } }],
     word: { isPublished: true, collections: { some: { collection: { isPublished: true } } } },
   };
+}
+
+/** Reviewable words whose next review has arrived (or that were never reviewed). */
+function dueWhere(userId: string, now: Date) {
+  return { ...reviewableWhere(userId), OR: [{ nextReviewAt: null }, { nextReviewAt: { lte: now } }] };
 }
 
 export async function countDueReviews(userId: string, now = new Date()): Promise<number> {
@@ -63,7 +67,7 @@ export async function listDueReviews(request: Request, response: Response): Prom
     }),
   ]);
 
-  response.status(200).json({ total, items: rows });
+  response.status(200).json({ total, items: rows.map((row) => ({ ...row, level: reviewLevel(row.repetitions) })) });
 }
 
 export async function submitReview(request: Request, response: Response): Promise<void> {

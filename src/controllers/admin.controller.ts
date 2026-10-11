@@ -9,6 +9,8 @@ import { normalizeTerm } from "../lib/text.js";
 import { isUuid } from "../lib/validation.js";
 import { generatePiperAudio } from "../services/piper.js";
 import { findPixabayImages, searchPixabay } from "../services/pixabay.js";
+import { findRecordedAudios } from "../services/recorded-audio.js";
+import { searchVideos, VIDEO_PROVIDERS } from "../services/video-sources/index.js";
 
 dotenv.config({ path: path.resolve(process.cwd(), ".env"), override: true });
 
@@ -65,7 +67,7 @@ const adminWordSelect = {
   relationsFrom: { orderBy: { createdAt: "asc" }, select: { id: true, type: true, target: { select: { id: true, term: true } } } },
   images: { orderBy: { position: "asc" }, select: { id: true, url: true } },
   audios: { orderBy: { position: "asc" }, select: { id: true, url: true, voice: true, accent: true, provider: true } },
-  videos: { orderBy: { position: "asc" }, select: { id: true, url: true } },
+  videos: { orderBy: { position: "asc" }, select: { id: true, url: true, provider: true, attribution: true, metadata: true } },
 } as const;
 
 type NewImage = { url: string; source: "pixabay" | "manual"; attribution?: string; metadata?: Record<string, unknown> };
@@ -100,9 +102,22 @@ const mediaSchema = z.object({
   provider: z.string().trim().max(100).optional(),
   license: z.string().trim().max(200).optional(),
   attribution: z.string().trim().max(300).optional(),
+  // Audio only.
+  voice: z.string().trim().max(50).optional(),
+  accent: z.string().trim().max(10).optional(),
+  // Audio and video.
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 const generateAudioSchema = z.object({
   accent: z.enum(["US", "UK"]).default("US"),
+});
+const recordedAudioSchema = z.object({
+  term: z.string().trim().min(1).max(100),
+  accent: z.enum(["US", "UK"]).default("US"),
+});
+const videoSearchSchema = z.object({
+  term: z.string().trim().min(1).max(100),
+  source: z.enum(VIDEO_PROVIDERS),
 });
 const fillMissingConfirmSchema = z.object({
   items: z.array(z.object({
@@ -164,6 +179,42 @@ export async function searchAdminPixabay(request: Request, response: Response): 
   }
 
   response.status(200).json({ totalHits: result.totalHits, images: result.images });
+}
+
+/** Finds human recordings to preview; nothing is saved until the admin attaches one to a word. */
+export async function searchAdminRecordedAudio(request: Request, response: Response): Promise<void> {
+  const parsed = recordedAudioSchema.safeParse(request.query);
+  if (!parsed.success) {
+    response.status(400).json({ message: "Invalid audio search" });
+    return;
+  }
+
+  try {
+    response.status(200).json({ audios: await findRecordedAudios(parsed.data.term, parsed.data.accent) });
+  } catch {
+    response.status(502).json({ message: "Recording search failed" });
+  }
+}
+
+/** Finds videos to preview from one source; nothing is saved until the admin attaches one to a word. */
+export async function searchAdminVideos(request: Request, response: Response): Promise<void> {
+  const parsed = videoSearchSchema.safeParse(request.query);
+  if (!parsed.success) {
+    response.status(400).json({ message: "Invalid video search" });
+    return;
+  }
+
+  const result = await searchVideos(parsed.data.source, parsed.data.term);
+  if (result.status === "unconfigured") {
+    response.status(503).json({ message: "Video source is not configured" });
+    return;
+  }
+  if (result.status === "failed") {
+    response.status(502).json({ message: "Video search failed" });
+    return;
+  }
+
+  response.status(200).json({ videos: result.videos });
 }
 
 export async function createAdminCollection(request: Request, response: Response): Promise<void> {
@@ -504,8 +555,11 @@ export async function createAdminMedia(request: Request, response: Response): Pr
   const resource = type === "image"
     ? await prisma.image.create({ data: { wordId, url: data.url, source: data.source ?? "manual", provider: data.provider, license: data.license, attribution: data.attribution } })
     : type === "audio"
-      ? await prisma.audio.create({ data: { wordId, url: data.url, provider: data.provider } })
-      : await prisma.video.create({ data: { wordId, url: data.url, source: data.source ?? "manual", provider: data.provider, license: data.license, attribution: data.attribution } });
+      ? await prisma.audio.create({ data: { wordId, url: data.url, provider: data.provider, voice: data.voice, accent: data.accent, metadata: data.metadata ? JSON.parse(JSON.stringify(data.metadata)) : undefined } })
+      : await prisma.video.create({
+        data: { wordId, url: data.url, source: data.source ?? "manual", provider: data.provider, license: data.license, attribution: data.attribution, metadata: data.metadata ? JSON.parse(JSON.stringify(data.metadata)) : undefined },
+        select: adminWordSelect.videos.select,
+      });
 
   response.status(201).json({ resource });
 }

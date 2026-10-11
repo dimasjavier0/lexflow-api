@@ -19,6 +19,8 @@ import {
   listAdminWords,
   removeAdminCollectionWord,
   searchAdminPixabay,
+  searchAdminRecordedAudio,
+  searchAdminVideos,
   updateAdminCollection,
   updateAdminWord,
   updateCollectionPublication,
@@ -66,3 +68,7 @@ adminRouter.delete("/sentences/:sentenceId", deleteAdminSentence);
 adminRouter.delete("/relations/:relationId", deleteAdminRelation);
 
 adminRouter.get("/pixabay/images", externalWorkLimit, searchAdminPixabay);
+// Each of these makes a couple of outbound requests at most, and their results are cached.
+const mediaSearchLimit = rateLimit({ windowMs: 60_000, max: 60 });
+adminRouter.get("/audio/recorded", mediaSearchLimit, searchAdminRecordedAudio);
+adminRouter.get("/videos/search", mediaSearchLimit, searchAdminVideos);
