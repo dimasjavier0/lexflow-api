@@ -7,8 +7,9 @@ import { publicBaseUrl } from "../lib/public-url.js";
 import { isPrismaError } from "../lib/prisma-errors.js";
 import { normalizeTerm } from "../lib/text.js";
 import { isUuid } from "../lib/validation.js";
+import { EXPIRING_PIXABAY_URL_PREFIX, isExpiringPixabayUrl, removeStoredFile, storeRemoteImage } from "../services/image-store.js";
 import { generatePiperAudio } from "../services/piper.js";
-import { findPixabayImages, searchPixabay } from "../services/pixabay.js";
+import { findPixabayImageById, findPixabayImages, searchPixabay, type PixabayImage } from "../services/pixabay.js";
 import { findRecordedAudios } from "../services/recorded-audio.js";
 import { searchVideos, VIDEO_PROVIDERS } from "../services/video-sources/index.js";
 
@@ -84,6 +85,35 @@ function toImageRows(wordId: string, images: NewImage[]) {
   }));
 }
 
+/** Copies Pixabay's 24-hour links into /uploads. Images that cannot be downloaded are left out. */
+async function localizeImages<T extends { url: string }>(baseUrl: string, images: T[]): Promise<T[]> {
+  const stored = await Promise.all(images.map(async (image) => {
+    if (!isExpiringPixabayUrl(image.url)) return image;
+    const url = await storeRemoteImage(baseUrl, image.url);
+    return url ? { ...image, url } : null;
+  }));
+  return stored.filter((image): image is Awaited<T> => image !== null);
+}
+
+/** Downloads search results and attaches them to a word. Returns how many were stored. */
+async function attachPixabayImages(baseUrl: string, wordId: string, images: PixabayImage[]): Promise<number> {
+  const stored = await localizeImages(baseUrl, images);
+  if (stored.length) {
+    await prisma.image.createMany({
+      data: toImageRows(wordId, stored.map((image) => ({ url: image.url, source: "pixabay" as const, attribution: `Pixabay: ${image.user}`, metadata: { id: image.id, pageUrl: image.pageUrl, tags: image.tags } }))),
+    });
+  }
+  return stored.length;
+}
+
+/** Removes the uploaded files behind deleted images, unless something else still links to them. */
+async function discardImageFiles(urls: string[]): Promise<void> {
+  for (const url of urls) {
+    const [images, covers] = await Promise.all([prisma.image.count({ where: { url } }), prisma.collection.count({ where: { imageUrl: url } })]);
+    if (images + covers === 0) await removeStoredFile(url);
+  }
+}
+
 const sentenceSchema = z.object({
   text: z.string().trim().min(1).max(300),
   translationEs: z.string().trim().max(300).nullable().optional(),
@@ -119,6 +149,10 @@ const videoSearchSchema = z.object({
   term: z.string().trim().min(1).max(100),
   source: z.enum(VIDEO_PROVIDERS),
 });
+const wordsActionSchema = z.object({
+  wordIds: z.array(z.string().uuid()).min(1).max(200),
+  action: z.enum(["publish", "unpublish", "repair-images", "refresh-images", "delete-images", "remove"]),
+});
 const fillMissingConfirmSchema = z.object({
   items: z.array(z.object({
     wordId: z.string().uuid(),
@@ -129,6 +163,9 @@ const fillMissingConfirmSchema = z.object({
 
 /** How many words are enriched (Pixabay + Piper) at the same time during a bulk import. */
 const ENRICH_CONCURRENCY = 4;
+
+/** Images repaired per request, to stay under Pixabay's 100 requests per minute. */
+const REPAIR_BATCH_SIZE = 80;
 
 /**
  * Existing words keyed by normalized term, so "Café", "cafe" and "CAFE" resolve to one word.
@@ -151,6 +188,12 @@ async function runPooled<T>(items: T[], limit: number, task: (item: T) => Promis
     while (next < items.length) await task(items[next++]);
   };
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+}
+
+/** Stores a Pixabay cover in /uploads. Resolves to undefined when the download fails. */
+async function localizeCover(baseUrl: string, imageUrl: string | null | undefined): Promise<string | null | undefined> {
+  if (!imageUrl || !isExpiringPixabayUrl(imageUrl)) return imageUrl ?? null;
+  return await storeRemoteImage(baseUrl, imageUrl) ?? undefined;
 }
 
 export async function listAdminCollections(_request: Request, response: Response): Promise<void> {
@@ -224,8 +267,14 @@ export async function createAdminCollection(request: Request, response: Response
     return;
   }
 
+  const imageUrl = await localizeCover(publicBaseUrl(request), parsed.data.imageUrl);
+  if (imageUrl === undefined) {
+    response.status(502).json({ message: "Could not download the cover image" });
+    return;
+  }
+
   try {
-    const collection = await prisma.collection.create({ data: parsed.data });
+    const collection = await prisma.collection.create({ data: { ...parsed.data, imageUrl } });
     response.status(201).json({ collection });
   } catch (error) {
     if (isPrismaError(error, "P2002")) {
@@ -276,6 +325,12 @@ export async function createAdminWord(request: Request, response: Response): Pro
     return;
   }
 
+  const images = await localizeImages(publicBaseUrl(request), parsed.data.images ?? []);
+  if (images.length < (parsed.data.images?.length ?? 0)) {
+    response.status(502).json({ message: "Could not download the selected images" });
+    return;
+  }
+
   // Words are shared between collections: reusing a term refreshes its
   // translation and level but must not unpublish it elsewhere.
   // The term is matched ignoring accents and case, keeping the spelling already stored.
@@ -310,10 +365,10 @@ export async function createAdminWord(request: Request, response: Response): Pro
     select: { position: true },
   });
 
-  if (parsed.data.images?.length) {
+  if (images.length) {
     const existingImages = await prisma.image.count({ where: { wordId: word.id } });
     await prisma.image.createMany({
-      data: toImageRows(word.id, parsed.data.images).map((row) => ({ ...row, position: existingImages + row.position })),
+      data: toImageRows(word.id, images).map((row) => ({ ...row, position: existingImages + row.position })),
     });
   }
 
@@ -404,10 +459,7 @@ export async function createAdminWordsBulk(request: Request, response: Response)
   const linked = await prisma.word.findMany({ where: { id: { in: linkedWordIds } }, select: { id: true, term: true, _count: { select: { images: true, audios: true } } } });
   let failedAudio = 0;
   await runPooled(linked, ENRICH_CONCURRENCY, async (word) => {
-    if (word._count.images === 0) {
-      const images = await findPixabayImages(word.term);
-      if (images.length) await prisma.image.createMany({ data: images.map((image, index) => ({ wordId: word.id, url: image.url, source: "pixabay", provider: "Pixabay", attribution: `Pixabay: ${image.user}`, metadata: { id: image.id, pageUrl: image.pageUrl, tags: image.tags }, position: index })) });
-    }
+    if (word._count.images === 0) await attachPixabayImages(baseUrl, word.id, await findPixabayImages(word.term));
     if (word._count.audios === 0) {
       try {
         const audio = await generatePiperAudio(baseUrl, word.id, word.term, "US");
@@ -452,12 +504,131 @@ export async function confirmMissingAdminImages(request: Request, response: Resp
   for (const item of parsed.data.items) {
     if (!allowed.has(item.wordId)) continue;
     const existingImages = await prisma.image.count({ where: { wordId: item.wordId } });
-    if (existingImages === 0 && item.images.length) await prisma.image.createMany({ data: item.images.slice(0, 2).map((image, index) => ({ wordId: item.wordId, url: image.url, source: "pixabay", provider: "Pixabay", attribution: image.attribution, metadata: image.metadata ? JSON.parse(JSON.stringify(image.metadata)) : undefined, position: index })) });
+    const images = existingImages === 0 ? await localizeImages(publicBaseUrl(request), item.images.slice(0, 2)) : [];
+    if (images.length) await prisma.image.createMany({ data: images.map((image, index) => ({ wordId: item.wordId, url: image.url, source: "pixabay", provider: "Pixabay", attribution: image.attribution, metadata: image.metadata ? JSON.parse(JSON.stringify(image.metadata)) : undefined, position: index })) });
     const existingAudio = await prisma.audio.count({ where: { wordId: item.wordId } });
     if (existingAudio === 0 && item.audio) await prisma.audio.create({ data: { wordId: item.wordId, ...item.audio, metadata: item.audio.metadata ? JSON.parse(JSON.stringify(item.audio.metadata)) : undefined } });
     saved += 1;
   }
   response.status(200).json({ saved });
+}
+
+/**
+ * Gives images that still point at an expired Pixabay link a local copy.
+ * The image is fetched again by its Pixabay id, so it stays the same picture.
+ */
+async function repairWordImages(baseUrl: string, wordIds?: string[]): Promise<{ repaired: number; failed: number; remaining: number }> {
+  const broken = await prisma.image.findMany({
+    where: { url: { startsWith: EXPIRING_PIXABAY_URL_PREFIX }, wordId: wordIds ? { in: wordIds } : undefined },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, url: true, metadata: true },
+  });
+  const batch = broken.slice(0, REPAIR_BATCH_SIZE);
+  let repaired = 0;
+  await runPooled(batch, ENRICH_CONCURRENCY, async (image) => {
+    // A link saved less than a day ago still works; older ones need a fresh one.
+    let url = await storeRemoteImage(baseUrl, image.url);
+    if (!url) {
+      const pixabayId = (image.metadata as { id?: unknown } | null)?.id;
+      const fresh = typeof pixabayId === "number" ? await findPixabayImageById(pixabayId) : null;
+      if (fresh) url = await storeRemoteImage(baseUrl, fresh.url);
+    }
+    if (!url) return;
+    await prisma.image.update({ where: { id: image.id }, data: { url } });
+    repaired += 1;
+  });
+  return { repaired, failed: batch.length - repaired, remaining: broken.length - batch.length };
+}
+
+/**
+ * Collection covers keep no Pixabay id, so an expired one cannot be fetched again:
+ * it is replaced with the first result for the collection's name.
+ */
+async function repairCollectionCovers(baseUrl: string): Promise<{ repaired: number; failed: number }> {
+  const collections = await prisma.collection.findMany({ where: { imageUrl: { startsWith: EXPIRING_PIXABAY_URL_PREFIX } }, select: { id: true, name: true, imageUrl: true } });
+  let repaired = 0;
+  for (const collection of collections) {
+    let url = collection.imageUrl ? await storeRemoteImage(baseUrl, collection.imageUrl) : null;
+    if (!url) {
+      const [replacement] = await findPixabayImages(collection.name);
+      if (replacement) url = await storeRemoteImage(baseUrl, replacement.url);
+    }
+    if (!url) continue;
+    await prisma.collection.update({ where: { id: collection.id }, data: { imageUrl: url } });
+    repaired += 1;
+  }
+  return { repaired, failed: collections.length - repaired };
+}
+
+/** Repairs every expired Pixabay image in the library, covers included. */
+export async function repairAdminImages(request: Request, response: Response): Promise<void> {
+  if (!process.env.PIXABAY_API_KEY) {
+    response.status(503).json({ message: "Pixabay is not configured" });
+    return;
+  }
+
+  const baseUrl = publicBaseUrl(request);
+  const images = await repairWordImages(baseUrl);
+  const covers = await repairCollectionCovers(baseUrl);
+  response.status(200).json({ repaired: images.repaired + covers.repaired, failed: images.failed + covers.failed, remaining: images.remaining });
+}
+
+/** Applies one action to the chosen words of a collection. */
+export async function runAdminWordsAction(request: Request, response: Response): Promise<void> {
+  const collectionId = request.params.collectionId;
+  const parsed = wordsActionSchema.safeParse(request.body);
+  if (!isUuid(collectionId) || !parsed.success) {
+    response.status(400).json({ message: "Invalid words action" });
+    return;
+  }
+
+  const { action } = parsed.data;
+  if ((action === "repair-images" || action === "refresh-images") && !process.env.PIXABAY_API_KEY) {
+    response.status(503).json({ message: "Pixabay is not configured" });
+    return;
+  }
+
+  // Ids outside the collection are ignored.
+  const links = await prisma.collectionWord.findMany({ where: { collectionId, wordId: { in: parsed.data.wordIds } }, select: { wordId: true } });
+  const wordIds = links.map((link) => link.wordId);
+  const baseUrl = publicBaseUrl(request);
+  let affected = 0;
+  let failed = 0;
+
+  if (action === "publish" || action === "unpublish") {
+    const result = await prisma.word.updateMany({ where: { id: { in: wordIds } }, data: { isPublished: action === "publish" } });
+    affected = result.count;
+  } else if (action === "delete-images") {
+    const images = await prisma.image.findMany({ where: { wordId: { in: wordIds } }, select: { url: true } });
+    await prisma.image.deleteMany({ where: { wordId: { in: wordIds } } });
+    await discardImageFiles(images.map((image) => image.url));
+    affected = images.length;
+  } else if (action === "repair-images") {
+    const result = await repairWordImages(baseUrl, wordIds);
+    affected = result.repaired;
+    failed = result.failed + result.remaining;
+  } else if (action === "refresh-images") {
+    const words = await prisma.word.findMany({ where: { id: { in: wordIds } }, select: { id: true, term: true, images: { select: { id: true, url: true } } } });
+    await runPooled(words, ENRICH_CONCURRENCY, async (word) => {
+      // The current images are only dropped once their replacements are stored.
+      const stored = await attachPixabayImages(baseUrl, word.id, await findPixabayImages(word.term));
+      if (!stored) {
+        failed += 1;
+        return;
+      }
+      await prisma.image.deleteMany({ where: { id: { in: word.images.map((image) => image.id) } } });
+      await discardImageFiles(word.images.map((image) => image.url));
+      affected += 1;
+    });
+  } else {
+    await prisma.$transaction(async (transaction) => {
+      await transaction.collectionWord.deleteMany({ where: { collectionId, wordId: { in: wordIds } } });
+      await transaction.word.deleteMany({ where: { id: { in: wordIds }, collections: { none: {} } } });
+    });
+    affected = wordIds.length;
+  }
+
+  response.status(200).json({ affected, failed });
 }
 
 export async function updateCollectionPublication(request: Request, response: Response): Promise<void> {
@@ -508,25 +679,31 @@ export async function updateAdminWord(request: Request, response: Response): Pro
   }
 
   const { images, ...wordData } = parsed.data;
+  let newImages: NewImage[] = [];
+  if (images?.length) {
+    // A Pixabay image is stored under a local URL, so it is recognised by its Pixabay id instead.
+    const existingImages = await prisma.image.findMany({ where: { wordId }, select: { url: true, source: true, metadata: true } });
+    const existingUrls = new Set(existingImages.map((image) => image.url));
+    const existingPixabayIds = new Set(existingImages.filter((image) => image.source === "pixabay").map((image) => (image.metadata as { id?: unknown } | null)?.id));
+    const unseen = images.filter((image) => !existingUrls.has(image.url) && !(image.source === "pixabay" && existingPixabayIds.has(image.metadata?.id)));
+    newImages = await localizeImages(publicBaseUrl(request), unseen);
+    if (newImages.length < unseen.length) {
+      response.status(502).json({ message: "Could not download the selected images" });
+      return;
+    }
+  }
+
   const word = await prisma.$transaction(async (transaction) => {
     const updatedWord = await transaction.word.update({
       where: { id: wordId },
       data: wordData,
     });
 
-    if (images?.length) {
-      const existingImages = await transaction.image.findMany({
-        where: { wordId, url: { in: images.map((image) => image.url) } },
-        select: { url: true },
+    if (newImages.length) {
+      const existingCount = await transaction.image.count({ where: { wordId } });
+      await transaction.image.createMany({
+        data: toImageRows(wordId, newImages).map((row) => ({ ...row, position: existingCount + row.position })),
       });
-      const existingUrls = new Set(existingImages.map((image) => image.url));
-      const newImages = images.filter((image) => !existingUrls.has(image.url));
-      if (newImages.length) {
-        const existingCount = await transaction.image.count({ where: { wordId } });
-        await transaction.image.createMany({
-          data: toImageRows(wordId, newImages).map((row) => ({ ...row, position: existingCount + row.position })),
-        });
-      }
     }
 
     return transaction.word.findUniqueOrThrow({
@@ -552,8 +729,18 @@ export async function createAdminMedia(request: Request, response: Response): Pr
     return;
   }
 
+  let imageUrl = data.url;
+  if (type === "image" && isExpiringPixabayUrl(data.url)) {
+    const stored = await storeRemoteImage(publicBaseUrl(request), data.url);
+    if (!stored) {
+      response.status(502).json({ message: "Could not download the image" });
+      return;
+    }
+    imageUrl = stored;
+  }
+
   const resource = type === "image"
-    ? await prisma.image.create({ data: { wordId, url: data.url, source: data.source ?? "manual", provider: data.provider, license: data.license, attribution: data.attribution } })
+    ? await prisma.image.create({ data: { wordId, url: imageUrl, source: data.source ?? "manual", provider: data.provider, license: data.license, attribution: data.attribution } })
     : type === "audio"
       ? await prisma.audio.create({ data: { wordId, url: data.url, provider: data.provider, voice: data.voice, accent: data.accent, metadata: data.metadata ? JSON.parse(JSON.stringify(data.metadata)) : undefined } })
       : await prisma.video.create({
@@ -596,13 +783,14 @@ export async function deleteAdminImage(request: Request, response: Response): Pr
     return;
   }
 
-  const image = await prisma.image.findUnique({ where: { id: imageId }, select: { id: true } });
+  const image = await prisma.image.findUnique({ where: { id: imageId }, select: { id: true, url: true } });
   if (!image) {
     response.status(404).json({ message: "Image not found" });
     return;
   }
 
   await prisma.image.delete({ where: { id: imageId } });
+  await discardImageFiles([image.url]);
   response.status(204).send();
 }
 
@@ -747,7 +935,15 @@ export async function updateAdminCollection(request: Request, response: Response
     return;
   }
 
-  const collection = await prisma.collection.update({ where: { id: collectionId }, data: parsed.data, include: { _count: { select: { words: true } } } });
+  const imageUrl = await localizeCover(publicBaseUrl(request), parsed.data.imageUrl);
+  if (imageUrl === undefined) {
+    response.status(502).json({ message: "Could not download the cover image" });
+    return;
+  }
+
+  const previous = await prisma.collection.findUnique({ where: { id: collectionId }, select: { imageUrl: true } });
+  const collection = await prisma.collection.update({ where: { id: collectionId }, data: { ...parsed.data, imageUrl }, include: { _count: { select: { words: true } } } });
+  if (previous?.imageUrl && previous.imageUrl !== imageUrl) await discardImageFiles([previous.imageUrl]);
   response.status(200).json({ collection });
 }
 

@@ -18,6 +18,8 @@ import {
   listAdminCollections,
   listAdminWords,
   removeAdminCollectionWord,
+  repairAdminImages,
+  runAdminWordsAction,
   searchAdminPixabay,
   searchAdminRecordedAudio,
   searchAdminVideos,
@@ -50,6 +52,7 @@ adminRouter.post("/collections/:collectionId/words", createAdminWord);
 adminRouter.post("/collections/:collectionId/words/bulk", externalWorkLimit, createAdminWordsBulk);
 adminRouter.delete("/collections/:collectionId/words/:wordId", removeAdminCollectionWord);
 adminRouter.patch("/collections/:collectionId/words/publication", updateCollectionWordsPublication);
+adminRouter.post("/collections/:collectionId/words/actions", externalWorkLimit, runAdminWordsAction);
 adminRouter.post("/collections/:collectionId/images/fill-missing", externalWorkLimit, fillMissingAdminImages);
 adminRouter.post("/collections/:collectionId/images/fill-missing/confirm", confirmMissingAdminImages);
 
@@ -61,6 +64,7 @@ adminRouter.post("/words/:wordId/relations", createAdminRelation);
 adminRouter.post("/words/:wordId/images", imageUpload.single("image"), uploadAdminImage);
 adminRouter.post("/words/:wordId/audio/generate", externalWorkLimit, generateAdminAudio);
 
+adminRouter.post("/images/repair", externalWorkLimit, repairAdminImages);
 adminRouter.delete("/images/:imageId", deleteAdminImage);
 adminRouter.delete("/videos/:videoId", deleteAdminVideo);
 adminRouter.delete("/audios/:audioId", deleteAdminAudio);
