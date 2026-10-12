@@ -17,6 +17,7 @@ Cómo y cuándo se actualiza este archivo está en [CLAUDE.md](CLAUDE.md).
 
 ### Changed
 
+- El nombre junto al logo pasa a ser «LexFlow English», con una letra redondeada propia que se sirve desde la app, sin depender de servicios externos.
 - Las pantallas e indicadores de carga muestran la L dentro de un anillo que se dibuja desde vacío hasta completarse, en lugar del círculo giratorio.
 - Con palabras seleccionadas que no tienen imágenes, el botón pasa a llamarse «Buscar imágenes», actúa sin pedir confirmación y avisa con «Imágenes añadidas a N palabras».
 - Mientras se aplica una acción a las palabras seleccionadas, sus casillas quedan bloqueadas.
