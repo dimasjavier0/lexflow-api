@@ -43,7 +43,6 @@ Cómo y cuándo se actualiza este archivo está en [CLAUDE.md](CLAUDE.md).
 
 ### Changed
 
-- Las pantallas e indicadores de carga muestran la L dentro de un anillo que se dibuja desde vacío hasta completarse, en lugar del círculo giratorio.
 - Al eliminar una imagen se borra también su archivo en `uploads` si nada más lo usa.
 - El changelog se reorganizó por versiones con fecha.
 
@@ -73,7 +72,6 @@ Cómo y cuándo se actualiza este archivo está en [CLAUDE.md](CLAUDE.md).
 
 ### Changed
 
-- Las pantallas e indicadores de carga muestran la L dentro de un anillo que se dibuja desde vacío hasta completarse, en lugar del círculo giratorio.
 - La interfaz web se migró a utilidades Tailwind v4 con tokens de marca en `@theme` y componentes compartidos en `components/ui` (Button, Field, Modal, Switch, Badge, Alert, Toast, EmptyState).
 - El panel admin se dividió en `features/admin` (hook de datos, filas de colección y palabra, modales y editor) y todas las llamadas pasan por `lib/api.ts` y `lib/admin-api.ts`.
 - Las rutas `/admin` de la API se agrupan en un router con autenticación única; Pixabay y Piper viven en `services/`.
@@ -116,7 +114,6 @@ Cómo y cuándo se actualiza este archivo está en [CLAUDE.md](CLAUDE.md).
 
 ### Changed
 
-- Las pantallas e indicadores de carga muestran la L dentro de un anillo que se dibuja desde vacío hasta completarse, en lugar del círculo giratorio.
 - Se rediseñó el panel admin como dashboard de acciones con colecciones y palabras expandibles.
 - El dashboard admin usa modales para las acciones y un editor de palabra reutilizable dentro de la biblioteca.
 
