@@ -8,6 +8,10 @@ Cómo y cuándo se actualiza este archivo está en [CLAUDE.md](CLAUDE.md).
 
 ### Added
 
+- Barra de progreso en las operaciones del panel admin que recorren varias palabras o imágenes: la lista rápida, «Completar imágenes y sonido» (al buscar y al guardar), «Reparar imágenes» (general y sobre la selección) y «Reemplazar» o «Buscar imágenes» sobre la selección. Muestra cuántas van, la última palabra procesada y el recuento hasta el momento: con imágenes, sin imágenes, sin pronunciación, reparadas o no recuperadas.
+- El aviso final de la lista rápida indica también cuántas palabras quedaron sin imágenes.
+- Los endpoints de esas operaciones envían el avance línea a línea (NDJSON) cuando la petición lleva `Accept: application/x-ndjson`; sin esa cabecera responden como antes.
+
 - Botón «Eliminar» en cada colección del panel admin. No borra al pulsarlo: abre un diálogo que nombra la colección, indica cuántas palabras se van con ella y pide confirmar con «Sí, eliminar colección».
 
 ### Changed

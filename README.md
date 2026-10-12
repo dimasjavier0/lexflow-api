@@ -108,6 +108,19 @@ Al abrir una colección en el panel admin, cada palabra tiene una casilla y la b
 | Eliminar imágenes      | Alguna palabra tiene imágenes.  | Borra todas sus imágenes y los archivos guardados. Pide confirmación.          |
 | Quitar de la colección | Siempre.                        | Las saca de la colección; se borran si no están en ninguna otra. Pide confirmación. |
 
+## Progreso de las operaciones largas
+
+Las operaciones del panel admin que recorren varias palabras o imágenes muestran una barra de progreso con el recuento hasta el momento (por ejemplo, cuántas palabras ya tienen imágenes y cuántas se quedaron sin ellas):
+
+- Lista rápida, lista por lista.
+- «Completar imágenes y sonido», al buscar las propuestas y al guardarlas.
+- «Reparar imágenes», tanto el botón general como el de las palabras seleccionadas.
+- «Reemplazar imágenes» y «Buscar imágenes» sobre las palabras seleccionadas.
+
+Publicar, pasar a borrador, eliminar imágenes y quitar palabras son una sola consulta y no muestran barra.
+
+En la API, esos endpoints aceptan `Accept: application/x-ndjson`. Con esa cabecera responden con una línea JSON por paso (`{"type":"progress","done":3,"total":18,"item":"cat","counts":{...}}`) y una última con el cuerpo habitual (`{"type":"result","body":{...}}`); si la operación falla a mitad, la última línea es `{"type":"error"}`. Sin la cabecera devuelven el JSON de siempre. El código común está en `apps/api/src/lib/progress-stream.ts` y, en la web, en `apiRequest` (`onProgress`) y el componente `ProgressBar`.
+
 ## Repaso espaciado y gamificación
 
 - Una palabra entra en el repaso cuando el estudiante la marca como «Quiero aprender». Cada repaso aplica SM-2 (`apps/api/src/services/srs.ts`): un acierto alarga el intervalo (1, 6 y después `intervalo × facilidad` días) y un fallo la devuelve al día siguiente.
