@@ -68,7 +68,7 @@ npm run check
 - Recursos manuales de imagen, audio y video mediante URL.
 - Selección de nivel CEFR, lecciones que omiten las palabras ya conocidas y avance por colección.
 - Publicación por palabra; los estudiantes solo ven palabras publicadas.
-- Búsqueda de imágenes en Pixabay y eliminación de colecciones, palabras y recursos desde el panel.
+- Búsqueda de imágenes en Pixabay y eliminación de colecciones, palabras y recursos desde el panel. Cada colección tiene un botón «Eliminar» que pide confirmación antes de borrarla; sus palabras se conservan si también están en otra colección.
 - Las imágenes de Pixabay se guardan en el servidor, y el panel puede reparar las que quedaron con un enlace caducado.
 - Selección de varias palabras de una colección para publicarlas, pasarlas a borrador, reparar, reemplazar o eliminar sus imágenes, o quitarlas de la colección.
 - Lista rápida de palabras e importación de varias listas en Markdown, con detección de duplicados.
