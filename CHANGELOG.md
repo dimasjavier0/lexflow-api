@@ -18,6 +18,7 @@ Cómo y cuándo se actualiza este archivo está en [CLAUDE.md](CLAUDE.md).
 
 - Con palabras seleccionadas que no tienen imágenes, el botón pasa a llamarse «Buscar imágenes», actúa sin pedir confirmación y avisa con «Imágenes añadidas a N palabras».
 - Mientras se aplica una acción a las palabras seleccionadas, sus casillas quedan bloqueadas.
+- En el panel admin, al elegir un filtro de palabras («Sin significado», «Sin imágenes» o «Sin sonido») se despliegan solas las colecciones que tienen palabras que coinciden y se pliegan las demás, sin tener que abrir cada colección para ver el resultado.
 
 ### Fixed
 
