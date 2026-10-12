@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "../db/prisma.js";
 import { publicBaseUrl } from "../lib/public-url.js";
 import { isPrismaError } from "../lib/prisma-errors.js";
+import { openProgress, type ProgressChannel } from "../lib/progress-stream.js";
 import { normalizeTerm } from "../lib/text.js";
 import { isUuid } from "../lib/validation.js";
 import { EXPIRING_PIXABAY_URL_PREFIX, isExpiringPixabayUrl, removeStoredFile, storeRemoteImage } from "../services/image-store.js";
@@ -457,21 +458,31 @@ export async function createAdminWordsBulk(request: Request, response: Response)
   // Words reused from other collections may already have media: only fill what is missing.
   const baseUrl = publicBaseUrl(request);
   const linked = await prisma.word.findMany({ where: { id: { in: linkedWordIds } }, select: { id: true, term: true, _count: { select: { images: true, audios: true } } } });
-  let failedAudio = 0;
+  const progress = openProgress(request, response);
+  const counts = { withImages: 0, withoutImages: 0, withAudio: 0, withoutAudio: 0 };
+  let done = 0;
+  progress.report({ done, total: linked.length, counts: { ...counts } });
   await runPooled(linked, ENRICH_CONCURRENCY, async (word) => {
-    if (word._count.images === 0) await attachPixabayImages(baseUrl, word.id, await findPixabayImages(word.term));
-    if (word._count.audios === 0) {
+    let hasImages = word._count.images > 0;
+    if (!hasImages) hasImages = await attachPixabayImages(baseUrl, word.id, await findPixabayImages(word.term)) > 0;
+    let hasAudio = word._count.audios > 0;
+    if (!hasAudio) {
       try {
         const audio = await generatePiperAudio(baseUrl, word.id, word.term, "US");
         await prisma.audio.create({ data: { wordId: word.id, ...audio } });
-      } catch { failedAudio += 1; }
+        hasAudio = true;
+      } catch { /* Counted below; the word keeps the browser's voice. */ }
     }
+    counts[hasImages ? "withImages" : "withoutImages"] += 1;
+    counts[hasAudio ? "withAudio" : "withoutAudio"] += 1;
+    done += 1;
+    progress.report({ done, total: linked.length, item: word.term, counts: { ...counts } });
   });
 
   const enriched = await prisma.word.findMany({ where: { id: { in: linkedWordIds } }, select: adminWordSelect });
   const order = new Map(linkedWordIds.map((wordId, index) => [wordId, index]));
   enriched.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
-  response.status(201).json({ words: enriched, skipped: entries.size - linkedWordIds.length, received: entries.size, failedAudio, collectionId: targetCollectionId, collectionCreated });
+  progress.finish(201, { words: enriched, skipped: entries.size - linkedWordIds.length, received: entries.size, failedAudio: counts.withoutAudio, withoutImages: counts.withoutImages, collectionId: targetCollectionId, collectionCreated });
 }
 
 export async function fillMissingAdminImages(request: Request, response: Response): Promise<void> {
@@ -484,15 +495,23 @@ export async function fillMissingAdminImages(request: Request, response: Respons
   const words = await prisma.collectionWord.findMany({ where: { collectionId }, select: { word: { select: { id: true, term: true, _count: { select: { images: true, audios: true } } } } } });
   const missing = words.filter(({ word }) => word._count.images === 0 || word._count.audios === 0);
   const previews: Array<{ wordId: string; term: string; images: Array<{ url: string; attribution: string; metadata: Record<string, unknown> }>; audio: { url: string; provider: string; voice: string; accent: string; metadata: Record<string, unknown> } | null }> = [];
+  const progress = openProgress(request, response);
+  // Each tally only counts the words that were missing that kind of media.
+  const counts = { imagesFound: 0, imagesMissing: 0, audioReady: 0, audioFailed: 0 };
+  progress.report({ done: 0, total: missing.length, counts: { ...counts } });
   for (const item of missing) {
     const images = await findPixabayImages(item.word.term);
     let audio = null;
     if (item.word._count.audios === 0) {
       try { audio = await generatePiperAudio(publicBaseUrl(request), item.word.id, item.word.term, "US"); } catch { audio = null; }
+      counts[audio ? "audioReady" : "audioFailed"] += 1;
     }
-    previews.push({ wordId: item.word.id, term: item.word.term, images: item.word._count.images === 0 ? images.slice(0, 2).map((image) => ({ url: image.url, attribution: `Pixabay: ${image.user}`, metadata: { id: image.id, pageUrl: image.pageUrl, tags: image.tags } })) : [], audio });
+    const proposed = item.word._count.images === 0 ? images.slice(0, 2).map((image) => ({ url: image.url, attribution: `Pixabay: ${image.user}`, metadata: { id: image.id, pageUrl: image.pageUrl, tags: image.tags } })) : [];
+    if (item.word._count.images === 0) counts[proposed.length ? "imagesFound" : "imagesMissing"] += 1;
+    previews.push({ wordId: item.word.id, term: item.word.term, images: proposed, audio });
+    progress.report({ done: previews.length, total: missing.length, item: item.word.term, counts: { ...counts } });
   }
-  response.status(200).json({ previews, scanned: words.length });
+  progress.finish(200, { previews, scanned: words.length });
 }
 
 export async function confirmMissingAdminImages(request: Request, response: Response): Promise<void> {
@@ -500,8 +519,12 @@ export async function confirmMissingAdminImages(request: Request, response: Resp
   const parsed = fillMissingConfirmSchema.safeParse(request.body);
   if (!isUuid(collectionId) || !parsed.success) { response.status(400).json({ message: "Invalid maintenance preview" }); return; }
   const allowed = new Set((await prisma.collectionWord.findMany({ where: { collectionId }, select: { wordId: true } })).map((item) => item.wordId));
+  const progress = openProgress(request, response);
+  const { items } = parsed.data;
   let saved = 0;
-  for (const item of parsed.data.items) {
+  for (const [index, item] of items.entries()) {
+    // Reported at the start of each turn, because a word outside the collection skips the rest of it.
+    progress.report({ done: index, total: items.length, counts: { saved } });
     if (!allowed.has(item.wordId)) continue;
     const existingImages = await prisma.image.count({ where: { wordId: item.wordId } });
     const images = existingImages === 0 ? await localizeImages(publicBaseUrl(request), item.images.slice(0, 2)) : [];
@@ -510,14 +533,34 @@ export async function confirmMissingAdminImages(request: Request, response: Resp
     if (existingAudio === 0 && item.audio) await prisma.audio.create({ data: { wordId: item.wordId, ...item.audio, metadata: item.audio.metadata ? JSON.parse(JSON.stringify(item.audio.metadata)) : undefined } });
     saved += 1;
   }
-  response.status(200).json({ saved });
+  progress.finish(200, { saved });
+}
+
+type RepairTally = { plan: (count: number) => void; step: (isRepaired: boolean) => void };
+
+/** Turns the outcome of each repaired image into progress steps. */
+function repairTally(progress: ProgressChannel): RepairTally {
+  let total = 0;
+  let done = 0;
+  const counts = { repaired: 0, failed: 0 };
+  return {
+    plan(count) {
+      total += count;
+      progress.report({ done, total, counts: { ...counts } });
+    },
+    step(isRepaired) {
+      done += 1;
+      counts[isRepaired ? "repaired" : "failed"] += 1;
+      progress.report({ done, total, counts: { ...counts } });
+    },
+  };
 }
 
 /**
  * Gives images that still point at an expired Pixabay link a local copy.
  * The image is fetched again by its Pixabay id, so it stays the same picture.
  */
-async function repairWordImages(baseUrl: string, wordIds?: string[]): Promise<{ repaired: number; failed: number; remaining: number }> {
+async function repairWordImages(baseUrl: string, tally: RepairTally, wordIds?: string[]): Promise<{ repaired: number; failed: number; remaining: number }> {
   const broken = await prisma.image.findMany({
     where: { url: { startsWith: EXPIRING_PIXABAY_URL_PREFIX }, wordId: wordIds ? { in: wordIds } : undefined },
     orderBy: { createdAt: "asc" },
@@ -525,6 +568,7 @@ async function repairWordImages(baseUrl: string, wordIds?: string[]): Promise<{ 
   });
   const batch = broken.slice(0, REPAIR_BATCH_SIZE);
   let repaired = 0;
+  tally.plan(batch.length);
   await runPooled(batch, ENRICH_CONCURRENCY, async (image) => {
     // A link saved less than a day ago still works; older ones need a fresh one.
     let url = await storeRemoteImage(baseUrl, image.url);
@@ -533,9 +577,11 @@ async function repairWordImages(baseUrl: string, wordIds?: string[]): Promise<{ 
       const fresh = typeof pixabayId === "number" ? await findPixabayImageById(pixabayId) : null;
       if (fresh) url = await storeRemoteImage(baseUrl, fresh.url);
     }
-    if (!url) return;
-    await prisma.image.update({ where: { id: image.id }, data: { url } });
-    repaired += 1;
+    if (url) {
+      await prisma.image.update({ where: { id: image.id }, data: { url } });
+      repaired += 1;
+    }
+    tally.step(url !== null);
   });
   return { repaired, failed: batch.length - repaired, remaining: broken.length - batch.length };
 }
@@ -544,18 +590,21 @@ async function repairWordImages(baseUrl: string, wordIds?: string[]): Promise<{ 
  * Collection covers keep no Pixabay id, so an expired one cannot be fetched again:
  * it is replaced with the first result for the collection's name.
  */
-async function repairCollectionCovers(baseUrl: string): Promise<{ repaired: number; failed: number }> {
+async function repairCollectionCovers(baseUrl: string, tally: RepairTally): Promise<{ repaired: number; failed: number }> {
   const collections = await prisma.collection.findMany({ where: { imageUrl: { startsWith: EXPIRING_PIXABAY_URL_PREFIX } }, select: { id: true, name: true, imageUrl: true } });
   let repaired = 0;
+  tally.plan(collections.length);
   for (const collection of collections) {
     let url = collection.imageUrl ? await storeRemoteImage(baseUrl, collection.imageUrl) : null;
     if (!url) {
       const [replacement] = await findPixabayImages(collection.name);
       if (replacement) url = await storeRemoteImage(baseUrl, replacement.url);
     }
-    if (!url) continue;
-    await prisma.collection.update({ where: { id: collection.id }, data: { imageUrl: url } });
-    repaired += 1;
+    if (url) {
+      await prisma.collection.update({ where: { id: collection.id }, data: { imageUrl: url } });
+      repaired += 1;
+    }
+    tally.step(Boolean(url));
   }
   return { repaired, failed: collections.length - repaired };
 }
@@ -568,9 +617,11 @@ export async function repairAdminImages(request: Request, response: Response): P
   }
 
   const baseUrl = publicBaseUrl(request);
-  const images = await repairWordImages(baseUrl);
-  const covers = await repairCollectionCovers(baseUrl);
-  response.status(200).json({ repaired: images.repaired + covers.repaired, failed: images.failed + covers.failed, remaining: images.remaining });
+  const progress = openProgress(request, response);
+  const tally = repairTally(progress);
+  const images = await repairWordImages(baseUrl, tally);
+  const covers = await repairCollectionCovers(baseUrl, tally);
+  progress.finish(200, { repaired: images.repaired + covers.repaired, failed: images.failed + covers.failed, remaining: images.remaining });
 }
 
 /** Applies one action to the chosen words of a collection. */
@@ -592,6 +643,8 @@ export async function runAdminWordsAction(request: Request, response: Response):
   const links = await prisma.collectionWord.findMany({ where: { collectionId, wordId: { in: parsed.data.wordIds } }, select: { wordId: true } });
   const wordIds = links.map((link) => link.wordId);
   const baseUrl = publicBaseUrl(request);
+  // Only the image actions take long enough to report steps; the rest answer at once.
+  const progress = openProgress(request, response);
   let affected = 0;
   let failed = 0;
 
@@ -604,21 +657,24 @@ export async function runAdminWordsAction(request: Request, response: Response):
     await discardImageFiles(images.map((image) => image.url));
     affected = images.length;
   } else if (action === "repair-images") {
-    const result = await repairWordImages(baseUrl, wordIds);
+    const result = await repairWordImages(baseUrl, repairTally(progress), wordIds);
     affected = result.repaired;
     failed = result.failed + result.remaining;
   } else if (action === "refresh-images") {
     const words = await prisma.word.findMany({ where: { id: { in: wordIds } }, select: { id: true, term: true, images: { select: { id: true, url: true } } } });
+    const report = (item?: string) => progress.report({ done: affected + failed, total: words.length, item, counts: { withImages: affected, withoutImages: failed } });
+    report();
     await runPooled(words, ENRICH_CONCURRENCY, async (word) => {
       // The current images are only dropped once their replacements are stored.
       const stored = await attachPixabayImages(baseUrl, word.id, await findPixabayImages(word.term));
-      if (!stored) {
+      if (stored) {
+        await prisma.image.deleteMany({ where: { id: { in: word.images.map((image) => image.id) } } });
+        await discardImageFiles(word.images.map((image) => image.url));
+        affected += 1;
+      } else {
         failed += 1;
-        return;
       }
-      await prisma.image.deleteMany({ where: { id: { in: word.images.map((image) => image.id) } } });
-      await discardImageFiles(word.images.map((image) => image.url));
-      affected += 1;
+      report(word.term);
     });
   } else {
     await prisma.$transaction(async (transaction) => {
@@ -628,7 +684,7 @@ export async function runAdminWordsAction(request: Request, response: Response):
     affected = wordIds.length;
   }
 
-  response.status(200).json({ affected, failed });
+  progress.finish(200, { affected, failed });
 }
 
 export async function updateCollectionPublication(request: Request, response: Response): Promise<void> {
