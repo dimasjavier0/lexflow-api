@@ -24,6 +24,7 @@ Cómo y cuándo se actualiza este archivo está en [CLAUDE.md](CLAUDE.md).
 
 ### Fixed
 
+- En el inicio de sesión y en las pantallas de carga, el botón de tema aparecía desplazado hacia el centro de la pantalla. Vuelve a estar en la esquina superior derecha.
 - La barra de selección ofrecía acciones que no aplicaban a las palabras elegidas, sobre todo al combinarla con un filtro: con «Sin imágenes» se podía «Reparar» o «Eliminar imágenes» y la respuesta era «Las palabras seleccionadas no tienen imágenes caducadas» o «0 imágenes eliminadas». Ahora solo aparecen las acciones que tienen efecto: «Publicar» si hay borradores, «Pasar a borrador» si hay publicadas, «Reparar imágenes» si alguna imagen está caducada y «Eliminar imágenes» si hay imágenes.
 - «Seleccionar todas» con un filtro activo descartaba la selección de las palabras ocultas por el filtro; ahora solo marca o desmarca las que se ven.
 
