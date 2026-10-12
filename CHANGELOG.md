@@ -17,6 +17,7 @@ Cómo y cuándo se actualiza este archivo está en [CLAUDE.md](CLAUDE.md).
 
 ### Changed
 
+- El icono de la app se entrega también en PNG (192 y 512 px), para que aparezca al instalarla o añadirla a la pantalla de inicio en móviles que no admiten iconos SVG, incluido iPhone.
 - El nombre junto al logo pasa a ser «LexFlow English», con una letra redondeada propia que se sirve desde la app, sin depender de servicios externos.
 - Las pantallas e indicadores de carga muestran la L dentro de un anillo que se dibuja desde vacío hasta completarse, en lugar del círculo giratorio.
 - Con palabras seleccionadas que no tienen imágenes, el botón pasa a llamarse «Buscar imágenes», actúa sin pedir confirmación y avisa con «Imágenes añadidas a N palabras».
