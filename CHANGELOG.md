@@ -6,6 +6,16 @@ Cómo y cuándo se actualiza este archivo está en [CLAUDE.md](CLAUDE.md).
 
 ## [Unreleased]
 
+### Changed
+
+- Con palabras seleccionadas que no tienen imágenes, el botón pasa a llamarse «Buscar imágenes», actúa sin pedir confirmación y avisa con «Imágenes añadidas a N palabras».
+- Mientras se aplica una acción a las palabras seleccionadas, sus casillas quedan bloqueadas.
+
+### Fixed
+
+- La barra de selección ofrecía acciones que no aplicaban a las palabras elegidas, sobre todo al combinarla con un filtro: con «Sin imágenes» se podía «Reparar» o «Eliminar imágenes» y la respuesta era «Las palabras seleccionadas no tienen imágenes caducadas» o «0 imágenes eliminadas». Ahora solo aparecen las acciones que tienen efecto: «Publicar» si hay borradores, «Pasar a borrador» si hay publicadas, «Reparar imágenes» si alguna imagen está caducada y «Eliminar imágenes» si hay imágenes.
+- «Seleccionar todas» con un filtro activo descartaba la selección de las palabras ocultas por el filtro; ahora solo marca o desmarca las que se ven.
+
 ## [0.6.0] - 2026-10-11
 
 ### Added

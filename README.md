@@ -96,16 +96,17 @@ Pixabay entrega cada imagen con un enlace temporal (`https://pixabay.com/get/...
 
 ## Acciones sobre varias palabras
 
-Al abrir una colección en el panel admin, cada palabra tiene una casilla y la barra superior permite seleccionarlas todas. Las acciones se aplican solo a las palabras visibles con el filtro activo, hasta 200 a la vez:
+Al abrir una colección en el panel admin, cada palabra tiene una casilla y la barra superior permite seleccionarlas todas. Las acciones se aplican solo a las palabras visibles con el filtro activo, hasta 200 a la vez. Las palabras que el filtro oculta conservan su casilla para cuando vuelvan a listarse. La barra solo muestra las acciones que tienen efecto sobre la selección:
 
-| Acción                 | Efecto                                                                         |
-| ---------------------- | ------------------------------------------------------------------------------ |
-| Publicar               | Las hace visibles para los estudiantes.                                        |
-| Pasar a borrador       | Las oculta a los estudiantes.                                                  |
-| Reparar imágenes       | Descarga al servidor sus imágenes de Pixabay con enlace caducado.              |
-| Reemplazar imágenes    | Sustituye sus imágenes por una búsqueda nueva en Pixabay. Pide confirmación.   |
-| Eliminar imágenes      | Borra todas sus imágenes y los archivos guardados. Pide confirmación.          |
-| Quitar de la colección | Las saca de la colección; se borran si no están en ninguna otra. Pide confirmación. |
+| Acción                 | Aparece cuando                  | Efecto                                                                         |
+| ---------------------- | ------------------------------- | ------------------------------------------------------------------------------ |
+| Publicar               | Hay algún borrador.             | Las hace visibles para los estudiantes.                                        |
+| Pasar a borrador       | Hay alguna publicada.           | Las oculta a los estudiantes.                                                  |
+| Reparar imágenes       | Alguna imagen está caducada.    | Descarga al servidor sus imágenes de Pixabay con enlace caducado.              |
+| Reemplazar imágenes    | Alguna palabra tiene imágenes.  | Sustituye sus imágenes por una búsqueda nueva en Pixabay. Pide confirmación.   |
+| Buscar imágenes        | Ninguna palabra tiene imágenes. | Les añade imágenes con una búsqueda en Pixabay.                                |
+| Eliminar imágenes      | Alguna palabra tiene imágenes.  | Borra todas sus imágenes y los archivos guardados. Pide confirmación.          |
+| Quitar de la colección | Siempre.                        | Las saca de la colección; se borran si no están en ninguna otra. Pide confirmación. |
 
 ## Repaso espaciado y gamificación
 
