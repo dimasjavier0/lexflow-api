@@ -6,6 +6,10 @@ Cómo y cuándo se actualiza este archivo está en [CLAUDE.md](CLAUDE.md).
 
 ## [Unreleased]
 
+### Changed
+
+- En el panel admin, al elegir un filtro de palabras («Sin significado», «Sin imágenes» o «Sin sonido») se despliegan solas las colecciones que tienen palabras que coinciden y se pliegan las demás, sin tener que abrir cada colección para ver el resultado.
+
 ## [0.6.0] - 2026-10-11
 
 ### Added
