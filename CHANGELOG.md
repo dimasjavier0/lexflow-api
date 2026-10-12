@@ -8,6 +8,7 @@ Cómo y cuándo se actualiza este archivo está en [CLAUDE.md](CLAUDE.md).
 
 ### Added
 
+- Logo nuevo: una gota coral con la L dentro. Aparece junto al nombre en la cabecera y en el inicio de sesión, en la pestaña del navegador y como icono al instalar la app.
 - Barra de progreso en las operaciones del panel admin que recorren varias palabras o imágenes: la lista rápida, «Completar imágenes y sonido» (al buscar y al guardar), «Reparar imágenes» (general y sobre la selección) y «Reemplazar» o «Buscar imágenes» sobre la selección. Muestra cuántas van, la última palabra procesada y el recuento hasta el momento: con imágenes, sin imágenes, sin pronunciación, reparadas o no recuperadas.
 - El aviso final de la lista rápida indica también cuántas palabras quedaron sin imágenes.
 - Los endpoints de esas operaciones envían el avance línea a línea (NDJSON) cuando la petición lleva `Accept: application/x-ndjson`; sin esa cabecera responden como antes.
@@ -16,6 +17,7 @@ Cómo y cuándo se actualiza este archivo está en [CLAUDE.md](CLAUDE.md).
 
 ### Changed
 
+- Las pantallas e indicadores de carga muestran la L dentro de un anillo que se dibuja desde vacío hasta completarse, en lugar del círculo giratorio.
 - Con palabras seleccionadas que no tienen imágenes, el botón pasa a llamarse «Buscar imágenes», actúa sin pedir confirmación y avisa con «Imágenes añadidas a N palabras».
 - Mientras se aplica una acción a las palabras seleccionadas, sus casillas quedan bloqueadas.
 - En el panel admin, al elegir un filtro de palabras («Sin significado», «Sin imágenes» o «Sin sonido») se despliegan solas las colecciones que tienen palabras que coinciden y se pliegan las demás, sin tener que abrir cada colección para ver el resultado.
@@ -40,6 +42,7 @@ Cómo y cuándo se actualiza este archivo está en [CLAUDE.md](CLAUDE.md).
 
 ### Changed
 
+- Las pantallas e indicadores de carga muestran la L dentro de un anillo que se dibuja desde vacío hasta completarse, en lugar del círculo giratorio.
 - Al eliminar una imagen se borra también su archivo en `uploads` si nada más lo usa.
 - El changelog se reorganizó por versiones con fecha.
 
@@ -69,6 +72,7 @@ Cómo y cuándo se actualiza este archivo está en [CLAUDE.md](CLAUDE.md).
 
 ### Changed
 
+- Las pantallas e indicadores de carga muestran la L dentro de un anillo que se dibuja desde vacío hasta completarse, en lugar del círculo giratorio.
 - La interfaz web se migró a utilidades Tailwind v4 con tokens de marca en `@theme` y componentes compartidos en `components/ui` (Button, Field, Modal, Switch, Badge, Alert, Toast, EmptyState).
 - El panel admin se dividió en `features/admin` (hook de datos, filas de colección y palabra, modales y editor) y todas las llamadas pasan por `lib/api.ts` y `lib/admin-api.ts`.
 - Las rutas `/admin` de la API se agrupan en un router con autenticación única; Pixabay y Piper viven en `services/`.
@@ -111,6 +115,7 @@ Cómo y cuándo se actualiza este archivo está en [CLAUDE.md](CLAUDE.md).
 
 ### Changed
 
+- Las pantallas e indicadores de carga muestran la L dentro de un anillo que se dibuja desde vacío hasta completarse, en lugar del círculo giratorio.
 - Se rediseñó el panel admin como dashboard de acciones con colecciones y palabras expandibles.
 - El dashboard admin usa modales para las acciones y un editor de palabra reutilizable dentro de la biblioteca.
 
