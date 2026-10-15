@@ -71,7 +71,7 @@ npm run check
 - Búsqueda de imágenes en Pixabay y eliminación de colecciones, palabras y recursos desde el panel. Cada colección tiene un botón «Eliminar» que pide confirmación antes de borrarla; sus palabras se conservan si también están en otra colección.
 - Las imágenes de Pixabay se guardan en el servidor, y el panel puede reparar las que quedaron con un enlace caducado.
 - Selección de varias palabras de una colección para publicarlas, pasarlas a borrador, reparar, reemplazar o eliminar sus imágenes, o quitarlas de la colección.
-- Lista rápida de palabras e importación de varias listas en Markdown, con detección de duplicados. Cada línea es `palabra en inglés, traducción, nivel` (`cat, gato, A1`); el nivel es opcional (A1 si falta), solo se aplica a las palabras nuevas y uno que no sea A1–C2 marca la línea como inválida.
+- Lista rápida de palabras e importación de varias listas en Markdown, con detección de duplicados. Cada línea es `palabra en inglés, traducción, nivel` (`cat, gato, A1`); el nivel es opcional (A1 si falta), solo se aplica a las palabras nuevas y uno que no sea A1–C2 marca la línea como inválida. Antes de guardar muestra una vista previa con cada lista como la colección en la que quedará y cada palabra con su imagen, traducción y nivel; al pulsar una palabra se pueden cambiar sus imágenes de Pixabay. Nada se guarda hasta pulsar «Confirmar y guardar».
 - Vista previa de las imágenes y la pronunciación que faltan en una colección, que se guardan al confirmar.
 - Buscador de videos (YouGlish, Pixabay, Pexels, Dailymotion, Wikimedia y YouTube) y de grabaciones de la pronunciación.
 - Selector de tema con tonos de color y modo oscuro.
@@ -112,7 +112,7 @@ Al abrir una colección en el panel admin, cada palabra tiene una casilla y la b
 
 Las operaciones del panel admin que recorren varias palabras o imágenes muestran una barra de progreso con el recuento hasta el momento (por ejemplo, cuántas palabras ya tienen imágenes y cuántas se quedaron sin ellas):
 
-- Lista rápida, lista por lista.
+- Lista rápida, lista por lista, al preparar la vista previa y al guardar.
 - «Completar imágenes y sonido», al buscar las propuestas y al guardarlas.
 - «Reparar imágenes», tanto el botón general como el de las palabras seleccionadas.
 - «Reemplazar imágenes» y «Buscar imágenes» sobre las palabras seleccionadas.

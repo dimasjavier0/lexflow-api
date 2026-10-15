@@ -52,12 +52,23 @@ const pixabaySearchSchema = z.object({
   page: z.coerce.number().int().min(1).max(125).default(1),
 });
 
+/** Images a word gets from a quick list, the same two that the automatic search keeps. */
+const BULK_IMAGES_PER_WORD = 2;
+
 const bulkWordsSchema = z.object({
-  // `level` only applies to the words the list creates; existing words keep theirs.
-  words: z.array(z.object({ term: z.string().trim().min(1).max(100), translationEs: z.string().trim().min(1).max(200), level: cefrLevelSchema.default("A1") })).min(1).max(50),
+  words: z.array(z.object({
+    term: z.string().trim().min(1).max(100),
+    translationEs: z.string().trim().min(1).max(200),
+    // `level` only applies to the words the list creates; existing words keep theirs.
+    level: cefrLevelSchema.default("A1"),
+    // Images picked in the preview, possibly none. Left out, the first Pixabay results are used.
+    images: z.array(z.object({ url: z.string().url(), attribution: z.string().trim().max(300).optional(), metadata: z.record(z.string(), z.unknown()).optional() })).max(BULK_IMAGES_PER_WORD).optional(),
+  })).min(1).max(50),
   collectionName: z.string().trim().min(1).max(100).optional(),
   collectionSlug: z.string().trim().min(1).max(100).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).optional(),
 });
+
+type BulkWordEntry = z.infer<typeof bulkWordsSchema>["words"][number];
 
 /** Shape of a word as the admin UI consumes it. */
 const adminWordSelect = {
@@ -107,6 +118,13 @@ async function attachPixabayImages(baseUrl: string, wordId: string, images: Pixa
       data: toImageRows(wordId, stored.map((image) => ({ url: image.url, source: "pixabay" as const, attribution: `Pixabay: ${image.user}`, metadata: { id: image.id, pageUrl: image.pageUrl, tags: image.tags } }))),
     });
   }
+  return stored.length;
+}
+
+/** Downloads the images picked in a quick-list preview and attaches them to a word. Returns how many were stored. */
+async function attachChosenImages(baseUrl: string, wordId: string, images: Array<Omit<NewImage, "source">>): Promise<number> {
+  const stored = await localizeImages(baseUrl, images);
+  if (stored.length) await prisma.image.createMany({ data: toImageRows(wordId, stored.map((image) => ({ ...image, source: "pixabay" as const }))) });
   return stored.length;
 }
 
@@ -168,6 +186,9 @@ const fillMissingConfirmSchema = z.object({
 /** How many words are enriched (Pixabay + Piper) at the same time during a bulk import. */
 const ENRICH_CONCURRENCY = 4;
 
+/** Pixabay results a quick-list preview offers for each word that needs images. */
+const PREVIEW_CANDIDATES = 6;
+
 /** Images repaired per request, to stay under Pixabay's 100 requests per minute. */
 const REPAIR_BATCH_SIZE = 80;
 
@@ -183,6 +204,23 @@ async function loadWordIdsByTerm(): Promise<Map<string, string>> {
     if (!byTerm.has(key)) byTerm.set(key, word.id);
   }
   return byTerm;
+}
+
+/** Words of a list by normalized term; repeated terms keep their first appearance. */
+function uniqueEntries(words: BulkWordEntry[]): Map<string, BulkWordEntry> {
+  const entries = new Map<string, BulkWordEntry>();
+  for (const word of words) {
+    const key = normalizeTerm(word.term);
+    if (key && !entries.has(key)) entries.set(key, word);
+  }
+  return entries;
+}
+
+/** The collection a list with this name (ignoring accents and case) or slug is added to, if there is one. */
+async function findCollectionForList(name: string, slug: string) {
+  const nameKey = normalizeTerm(name);
+  const collections = await prisma.collection.findMany({ select: { id: true, name: true, slug: true, imageUrl: true, _count: { select: { words: true } } } });
+  return collections.find((collection) => normalizeTerm(collection.name) === nameKey || collection.slug === slug) ?? null;
 }
 
 /** Runs `task` over `items` with at most `limit` in flight. */
@@ -389,6 +427,90 @@ export async function createAdminWord(request: Request, response: Response): Pro
   response.status(201).json({ word: relation });
 }
 
+type BulkPreviewImage = { url: string; previewUrl: string; attribution: string; metadata: Record<string, unknown> };
+
+/** What saving a word of a quick list would do. Existing words show what they already have, since the save keeps it. */
+type BulkPreviewWord = {
+  term: string;
+  translationEs: string;
+  level: string;
+  /** `linked` words are already in the collection and the save skips them. */
+  status: "new" | "reused" | "linked";
+  /** Images the word already has. */
+  images: string[];
+  /** Pixabay results to pick from, only for words that would get images. */
+  candidates: BulkPreviewImage[];
+};
+
+/** Tells what saving a quick list would do and offers images for the words that need them. Nothing is saved. */
+export async function previewAdminWordsBulk(request: Request, response: Response): Promise<void> {
+  const collectionId = request.params.collectionId;
+  if (collectionId !== "new" && !isUuid(collectionId)) {
+    response.status(400).json({ message: "Invalid collection id" });
+    return;
+  }
+
+  const parsed = bulkWordsSchema.safeParse(request.body);
+  if (!parsed.success) {
+    response.status(400).json({ message: "Invalid word list", issues: parsed.error.issues });
+    return;
+  }
+
+  // Same matching as the save, without creating the collection.
+  let target;
+  if (collectionId === "new") {
+    const { collectionName, collectionSlug } = parsed.data;
+    if (!collectionName || !collectionSlug) {
+      response.status(400).json({ message: "A new collection requires name and slug" });
+      return;
+    }
+    target = await findCollectionForList(collectionName, collectionSlug) ?? { id: null, name: collectionName, slug: collectionSlug, imageUrl: null, _count: { words: 0 } };
+  } else {
+    target = await prisma.collection.findUnique({ where: { id: collectionId }, select: { id: true, name: true, slug: true, imageUrl: true, _count: { select: { words: true } } } });
+    if (!target) {
+      response.status(404).json({ message: "Collection not found" });
+      return;
+    }
+  }
+
+  const entries = uniqueEntries(parsed.data.words);
+  const wordIdsByTerm = await loadWordIdsByTerm();
+  const knownIds = [...entries.keys()].map((key) => wordIdsByTerm.get(key)).filter((wordId): wordId is string => wordId !== undefined);
+  const [known, links] = await Promise.all([
+    prisma.word.findMany({ where: { id: { in: knownIds } }, select: { id: true, term: true, translationEs: true, level: true, images: { orderBy: { position: "asc" }, select: { url: true } } } }),
+    target.id ? prisma.collectionWord.findMany({ where: { collectionId: target.id, wordId: { in: knownIds } }, select: { wordId: true } }) : Promise.resolve([]),
+  ]);
+  const knownById = new Map(known.map((word) => [word.id, word]));
+  const linkedIds = new Set(links.map((link) => link.wordId));
+
+  const words = [...entries].map(([key, entry]): BulkPreviewWord => {
+    const wordId = wordIdsByTerm.get(key);
+    const word = wordId ? knownById.get(wordId) : undefined;
+    if (!wordId || !word) return { term: entry.term, translationEs: entry.translationEs, level: entry.level, status: "new", images: [], candidates: [] };
+    return { term: word.term, translationEs: word.translationEs, level: word.level, status: linkedIds.has(wordId) ? "linked" : "reused", images: word.images.map((image) => image.url), candidates: [] };
+  });
+
+  const progress = openProgress(request, response);
+  // Only the words that would get images count: the ones to add that have none yet.
+  const counts = { imagesFound: 0, imagesMissing: 0 };
+  let done = 0;
+  progress.report({ done, total: words.length, counts: { ...counts } });
+  await runPooled(words, ENRICH_CONCURRENCY, async (word) => {
+    if (word.status !== "linked" && word.images.length === 0) {
+      const result = await searchPixabay(word.term, { perPage: PREVIEW_CANDIDATES });
+      word.candidates = result.status === "ok"
+        ? result.images.map((image) => ({ url: image.url, previewUrl: image.previewUrl, attribution: `Pixabay: ${image.user}`, metadata: { id: image.id, pageUrl: image.pageUrl, tags: image.tags } }))
+        : [];
+      counts[word.candidates.length ? "imagesFound" : "imagesMissing"] += 1;
+    }
+    done += 1;
+    progress.report({ done, total: words.length, item: word.term, counts: { ...counts } });
+  });
+
+  const { _count, ...collection } = target;
+  progress.finish(200, { collection: { ...collection, wordCount: _count.words, isNew: target.id === null }, words });
+}
+
 export async function createAdminWordsBulk(request: Request, response: Response): Promise<void> {
   const collectionId = request.params.collectionId;
   if (collectionId !== "new" && !isUuid(collectionId)) {
@@ -410,10 +532,8 @@ export async function createAdminWordsBulk(request: Request, response: Response)
       response.status(400).json({ message: "A new collection requires name and slug" });
       return;
     }
-    // A list named like an existing collection (ignoring accents and case) is added to it.
-    const nameKey = normalizeTerm(collectionName);
-    const collections = await prisma.collection.findMany({ select: { id: true, name: true, slug: true } });
-    const match = collections.find((collection) => normalizeTerm(collection.name) === nameKey || collection.slug === collectionSlug);
+    // A list named like an existing collection is added to it.
+    const match = await findCollectionForList(collectionName, collectionSlug);
     if (match) {
       targetCollectionId = match.id;
     } else {
@@ -429,13 +549,7 @@ export async function createAdminWordsBulk(request: Request, response: Response)
     }
   }
 
-  // Repeated terms inside the list keep their first appearance.
-  const entries = new Map<string, z.infer<typeof bulkWordsSchema>["words"][number]>();
-  for (const word of parsed.data.words) {
-    const key = normalizeTerm(word.term);
-    if (key && !entries.has(key)) entries.set(key, word);
-  }
-
+  const entries = uniqueEntries(parsed.data.words);
   const wordIdsByTerm = await loadWordIdsByTerm();
   const newEntries = [...entries].filter(([key]) => !wordIdsByTerm.has(key));
   const linkedWordIds = await prisma.$transaction(async (transaction) => {
@@ -467,7 +581,11 @@ export async function createAdminWordsBulk(request: Request, response: Response)
   progress.report({ done, total: linked.length, counts: { ...counts } });
   await runPooled(linked, ENRICH_CONCURRENCY, async (word) => {
     let hasImages = word._count.images > 0;
-    if (!hasImages) hasImages = await attachPixabayImages(baseUrl, word.id, await findPixabayImages(word.term)) > 0;
+    if (!hasImages) {
+      // A list confirmed from its preview brings the images to keep, even if that is none.
+      const chosen = entries.get(normalizeTerm(word.term))?.images;
+      hasImages = (chosen ? await attachChosenImages(baseUrl, word.id, chosen) : await attachPixabayImages(baseUrl, word.id, await findPixabayImages(word.term))) > 0;
+    }
     let hasAudio = word._count.audios > 0;
     if (!hasAudio) {
       try {
