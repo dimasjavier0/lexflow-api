@@ -30,10 +30,12 @@ const editCollectionSchema = z.object({
   imageUrl: z.string().url().nullable(),
 });
 
+const cefrLevelSchema = z.enum(["A1", "A2", "B1", "B2", "C1", "C2"]);
+
 const wordSchema = z.object({
   term: z.string().trim().min(1).max(100),
   translationEs: z.string().trim().min(1).max(200),
-  level: z.enum(["A1", "A2", "B1", "B2", "C1", "C2"]).default("A1"),
+  level: cefrLevelSchema.default("A1"),
   partOfSpeech: z.enum(["NOUN", "VERB", "ADJECTIVE", "ADVERB", "PRONOUN", "PREPOSITION", "CONJUNCTION", "DETERMINER", "INTERJECTION", "PHRASE"]).nullable().optional(),
   frequencyRank: z.number().int().min(1).max(1_000_000).nullable().optional(),
   images: z.array(z.object({
@@ -51,7 +53,8 @@ const pixabaySearchSchema = z.object({
 });
 
 const bulkWordsSchema = z.object({
-  words: z.array(z.object({ term: z.string().trim().min(1).max(100), translationEs: z.string().trim().min(1).max(200) })).min(1).max(50),
+  // `level` only applies to the words the list creates; existing words keep theirs.
+  words: z.array(z.object({ term: z.string().trim().min(1).max(100), translationEs: z.string().trim().min(1).max(200), level: cefrLevelSchema.default("A1") })).min(1).max(50),
   collectionName: z.string().trim().min(1).max(100).optional(),
   collectionSlug: z.string().trim().min(1).max(100).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).optional(),
 });
@@ -427,7 +430,7 @@ export async function createAdminWordsBulk(request: Request, response: Response)
   }
 
   // Repeated terms inside the list keep their first appearance.
-  const entries = new Map<string, { term: string; translationEs: string }>();
+  const entries = new Map<string, z.infer<typeof bulkWordsSchema>["words"][number]>();
   for (const word of parsed.data.words) {
     const key = normalizeTerm(word.term);
     if (key && !entries.has(key)) entries.set(key, word);
@@ -438,7 +441,7 @@ export async function createAdminWordsBulk(request: Request, response: Response)
   const linkedWordIds = await prisma.$transaction(async (transaction) => {
     if (newEntries.length) {
       const created = await transaction.word.createManyAndReturn({
-        data: newEntries.map(([, word]) => ({ term: word.term, translationEs: word.translationEs, level: "A1" as const, isPublished: false })),
+        data: newEntries.map(([, word]) => ({ term: word.term, translationEs: word.translationEs, level: word.level, isPublished: false })),
         select: { id: true, term: true },
       });
       for (const word of created) wordIdsByTerm.set(normalizeTerm(word.term), word.id);

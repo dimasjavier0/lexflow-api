@@ -13,6 +13,7 @@ Cómo y cuándo se actualiza este archivo está en [CLAUDE.md](CLAUDE.md).
 - El aviso final de la lista rápida indica también cuántas palabras quedaron sin imágenes.
 - Los endpoints de esas operaciones envían el avance línea a línea (NDJSON) cuando la petición lleva `Accept: application/x-ndjson`; sin esa cabecera responden como antes.
 
+- La lista rápida acepta el nivel de cada palabra como tercer campo: `cat, gato, A1`. Es opcional; sin él la palabra se crea en A1. Un nivel que no sea A1, A2, B1, B2, C1 o C2 marca la línea como inválida, y las palabras que ya existen conservan el suyo.
 - Botón «Eliminar» en cada colección del panel admin. No borra al pulsarlo: abre un diálogo que nombra la colección, indica cuántas palabras se van con ella y pide confirmar con «Sí, eliminar colección».
 
 ### Changed
