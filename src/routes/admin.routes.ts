@@ -17,6 +17,7 @@ import {
   generateAdminAudio,
   listAdminCollections,
   listAdminWords,
+  previewAdminWordsBulk,
   removeAdminCollectionWord,
   repairAdminImages,
   runAdminWordsAction,
@@ -49,6 +50,7 @@ adminRouter.delete("/collections/:collectionId", deleteAdminCollection);
 adminRouter.patch("/collections/:collectionId/publication", updateCollectionPublication);
 adminRouter.get("/collections/:collectionId/words", listAdminWords);
 adminRouter.post("/collections/:collectionId/words", createAdminWord);
+adminRouter.post("/collections/:collectionId/words/bulk/preview", externalWorkLimit, previewAdminWordsBulk);
 adminRouter.post("/collections/:collectionId/words/bulk", externalWorkLimit, createAdminWordsBulk);
 adminRouter.delete("/collections/:collectionId/words/:wordId", removeAdminCollectionWord);
 adminRouter.patch("/collections/:collectionId/words/publication", updateCollectionWordsPublication);
