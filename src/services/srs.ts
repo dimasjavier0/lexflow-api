@@ -1,4 +1,5 @@
-export type ReviewResult = "correct" | "hard" | "incorrect";
+/** `hard`: right after seeing the translation. `retried`: right at the second attempt. */
+export type ReviewResult = "correct" | "hard" | "retried" | "incorrect";
 
 export type SrsState = { repetitions: number; intervalDays: number; easeFactor: number };
 
@@ -39,7 +40,7 @@ export function upcomingReviews(nextReviewAt: Array<Date | null>, now: Date, tzO
 }
 
 /** SM-2 grades answers from 0 to 5; anything below 3 is a failed recall. */
-const QUALITY: Record<ReviewResult, number> = { correct: 5, hard: 3, incorrect: 1 };
+const QUALITY: Record<ReviewResult, number> = { correct: 5, hard: 3, retried: 3, incorrect: 1 };
 
 /**
  * SM-2 scheduling step. A failed recall restarts the repetition count and brings

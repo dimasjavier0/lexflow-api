@@ -10,7 +10,7 @@ const dueQuerySchema = z.object({
 });
 
 const reviewBodySchema = z.object({
-  result: z.enum(["correct", "hard", "incorrect"]),
+  result: z.enum(["correct", "hard", "retried", "incorrect"]),
 });
 
 /** Words the learner asked to learn that can still be reached through a published collection. */

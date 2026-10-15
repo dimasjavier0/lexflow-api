@@ -2,22 +2,24 @@ import type { ReviewResult } from "./srs.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** Points are only earned by successful recalls, never by browsing. */
-const REVIEW_POINTS: Record<ReviewResult, number> = { correct: 10, hard: 5, incorrect: 0 };
-const MASTERED_BONUS = 25;
+/** Points are only earned by successful recalls, never by browsing. Any help halves them. */
+const REVIEW_POINTS: Record<ReviewResult, number> = { correct: 2, hard: 1, retried: 1, incorrect: 0 };
+const MASTERED_BONUS = 5;
+/** Points that open level 2; level n starts at (n - 1)² times this. */
+const LEVEL_STEP = 20;
 
 export function pointsForReview(result: ReviewResult, becameMastered: boolean): number {
   return REVIEW_POINTS[result] + (becameMastered ? MASTERED_BONUS : 0);
 }
 
 /**
- * Level n starts at (n - 1)² × 100 points: 0, 100, 400, 900… Each level asks for
+ * Level n starts at (n - 1)² × 20 points: 0, 20, 80, 180… Each level asks for
  * more than the previous one without needing a hand-maintained threshold table.
  */
 export function levelProgress(pointsTotal: number): { level: number; pointsIntoLevel: number; pointsForLevel: number } {
-  const level = Math.floor(Math.sqrt(Math.max(0, pointsTotal) / 100)) + 1;
-  const floor = (level - 1) ** 2 * 100;
-  return { level, pointsIntoLevel: pointsTotal - floor, pointsForLevel: level ** 2 * 100 - floor };
+  const level = Math.floor(Math.sqrt(Math.max(0, pointsTotal) / LEVEL_STEP)) + 1;
+  const floor = (level - 1) ** 2 * LEVEL_STEP;
+  return { level, pointsIntoLevel: pointsTotal - floor, pointsForLevel: level ** 2 * LEVEL_STEP - floor };
 }
 
 /** Calendar days are counted in UTC so a streak means the same on every server. */
