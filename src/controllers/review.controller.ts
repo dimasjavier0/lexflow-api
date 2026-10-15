@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../db/prisma.js";
 import { isUuid } from "../lib/validation.js";
 import { levelProgress, pointsForReview, streakAfterActivity } from "../services/gamification.js";
+import { addDailyPoints } from "../services/leaderboard.js";
 import { reviewLevel, scheduleReview } from "../services/srs.js";
 
 const dueQuerySchema = z.object({
@@ -110,6 +111,7 @@ export async function submitReview(request: Request, response: Response): Promis
       data: { ...streakAfterActivity(current, now), pointsTotal: { increment: pointsEarned } },
       select: { pointsTotal: true, streakCurrent: true, streakBest: true },
     });
+    await addDailyPoints(transaction, userId, pointsEarned, now);
     return { updated, stats };
   });
 

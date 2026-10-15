@@ -3,6 +3,7 @@ import cors from "cors";
 import express from "express";
 import { getCollection, listCollections, searchWords } from "./controllers/collections.controller.js";
 import { getHealth } from "./controllers/health.controller.js";
+import { getLeaderboard } from "./controllers/leaderboard.controller.js";
 import { getMe, getMyDashboard, updateMe } from "./controllers/me.controller.js";
 import { listProgress, summarizeProgress, updateProgress } from "./controllers/progress.controller.js";
 import { listDueReviews, submitReview } from "./controllers/review.controller.js";
@@ -34,6 +35,7 @@ app.get("/progress", requireAuth, listProgress);
 app.get("/progress/summary", requireAuth, summarizeProgress);
 app.get("/reviews/due", requireAuth, listDueReviews);
 app.post("/reviews/:wordId", requireAuth, submitReview);
+app.get("/leaderboard", requireAuth, getLeaderboard);
 app.use("/admin", adminRouter);
 app.use(errorHandler);
 

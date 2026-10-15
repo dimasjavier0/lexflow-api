@@ -63,6 +63,8 @@ model User {
   role      UserRole           @default(USER)
   name      String?
   avatarUrl String?
+  /// ISO 3166-1 alfa-2 ("CO", "ES"), elegido por el estudiante; filtra el ranking por país.
+  country   String?            @db.VarChar(2)
   /// Gamificación básica: los puntos solo se ganan con repasos acertados.
   pointsTotal    Int       @default(0)
   streakCurrent  Int       @default(0)
@@ -72,6 +74,20 @@ model User {
   createdAt DateTime           @default(now())
   updatedAt DateTime           @updatedAt
   progress  UserWordProgress[]
+  dailyPoints UserDailyPoints[]
+
+  @@index([country])
+}
+
+/// Puntos ganados por día (UTC): base de los rankings diario, semanal y mensual.
+model UserDailyPoints {
+  userId String   @db.Uuid
+  day    DateTime @db.Date
+  points Int      @default(0)
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, day])
+  @@index([day])
 }
 
 model Collection {
