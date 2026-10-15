@@ -92,7 +92,7 @@ export async function submitReview(request: Request, response: Response): Promis
   const now = new Date();
   const update = scheduleReview(progress, parsed.data.result, now);
   const becameMastered = progress.stage !== "MASTERED" && update.stage === "MASTERED";
-  const pointsEarned = pointsForReview(parsed.data.result, becameMastered);
+  const pointsEarned = pointsForReview(parsed.data.result);
 
   const { updated, stats } = await prisma.$transaction(async (transaction) => {
     const updated = await transaction.userWordProgress.update({

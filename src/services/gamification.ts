@@ -2,14 +2,16 @@ import type { ReviewResult } from "./srs.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** Points are only earned by successful recalls, never by browsing. Any help halves them. */
+/**
+ * Points are only earned by successful recalls, never by browsing: 2 per word, and any
+ * help (the translation or a second attempt) halves them. Mastering a word adds nothing.
+ */
 const REVIEW_POINTS: Record<ReviewResult, number> = { correct: 2, hard: 1, retried: 1, incorrect: 0 };
-const MASTERED_BONUS = 5;
 /** Points that open level 2; level n starts at (n - 1)² times this. */
 const LEVEL_STEP = 20;
 
-export function pointsForReview(result: ReviewResult, becameMastered: boolean): number {
-  return REVIEW_POINTS[result] + (becameMastered ? MASTERED_BONUS : 0);
+export function pointsForReview(result: ReviewResult): number {
+  return REVIEW_POINTS[result];
 }
 
 /**
