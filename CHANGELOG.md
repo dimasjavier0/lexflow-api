@@ -14,10 +14,12 @@ Cómo y cuándo se actualiza este archivo está en [CLAUDE.md](CLAUDE.md).
 - Los endpoints de esas operaciones envían el avance línea a línea (NDJSON) cuando la petición lleva `Accept: application/x-ndjson`; sin esa cabecera responden como antes.
 
 - La lista rápida acepta el nivel de cada palabra como tercer campo: `cat, gato, A1`. Es opcional; sin él la palabra se crea en A1. Un nivel que no sea A1, A2, B1, B2, C1 o C2 marca la línea como inválida, y las palabras que ya existen conservan el suyo.
+- En el repaso, al fallar una palabra aparece «Reintentar»: se puede escribir otra vez antes de ver la solución, y acertar al segundo intento da 1 punto. «Ver la respuesta» la da por fallada.
 - Botón «Eliminar» en cada colección del panel admin. No borra al pulsarlo: abre un diálogo que nombra la colección, indica cuántas palabras se van con ella y pide confirmar con «Sí, eliminar colección».
 
 ### Changed
 
+- Nueva puntuación del repaso: 2 puntos por palabra acertada (antes 10), 1 con pista (antes 5) y 5 extra al dominarla (antes 25). Los niveles se ajustan a la nueva escala: el nivel 2 llega a los 20 puntos, el 3 a los 80, el 4 a los 180. Los puntos ya ganados se conservan.
 - El icono de la app se entrega también en PNG (192 y 512 px), para que aparezca al instalarla o añadirla a la pantalla de inicio en móviles que no admiten iconos SVG, incluido iPhone.
 - El nombre junto al logo pasa a ser «LexFlow English», con una letra redondeada propia que se sirve desde la app, sin depender de servicios externos.
 - Las pantallas e indicadores de carga muestran la L dentro de un anillo que se dibuja desde vacío hasta completarse, en lugar del círculo giratorio.

@@ -125,7 +125,8 @@ En la API, esos endpoints aceptan `Accept: application/x-ndjson`. Con esa cabece
 
 - Una palabra entra en el repaso cuando el estudiante la marca como «Quiero aprender». Cada repaso aplica SM-2 (`apps/api/src/services/srs.ts`): un acierto alarga el intervalo (1, 6 y después `intervalo × facilidad` días) y un fallo la devuelve al día siguiente.
 - Cuatro aciertos seguidos convierten la palabra en dominada; un fallo posterior la devuelve a «aprendiendo».
-- Puntos (`apps/api/src/services/gamification.ts`): 10 por acierto, 5 por acierto con pista y 25 extra al dominar una palabra. El nivel `n` empieza en `(n − 1)² × 100` puntos.
+- Si la respuesta es incorrecta, el estudiante puede reintentar una vez antes de ver la solución; el primer fallo no se registra.
+- Puntos (`apps/api/src/services/gamification.ts`): 2 por acierto, 1 por acierto con pista o al segundo intento y 5 extra al dominar una palabra. El nivel `n` empieza en `(n − 1)² × 20` puntos.
 - La racha cuenta días consecutivos (en UTC) con al menos un repaso y se pierde al saltarse un día.
 
 ## Seguridad de la API
