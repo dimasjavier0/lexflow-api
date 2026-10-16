@@ -2,6 +2,7 @@ import "dotenv/config";
 import cors from "cors";
 import express from "express";
 import { getCollection, listCollections, searchWords } from "./controllers/collections.controller.js";
+import { connectFacebook, listFriends } from "./controllers/friends.controller.js";
 import { getHealth } from "./controllers/health.controller.js";
 import { getMe, getMyDashboard, updateMe } from "./controllers/me.controller.js";
 import { listProgress, summarizeProgress, updateProgress } from "./controllers/progress.controller.js";
@@ -29,6 +30,9 @@ app.get("/words/search", searchWords);
 app.get("/me", requireAuth, getMe);
 app.patch("/me", requireAuth, updateMe);
 app.get("/me/dashboard", requireAuth, getMyDashboard);
+app.get("/me/friends", requireAuth, listFriends);
+// Each call reads the friend list from Facebook, up to 50 pages.
+app.post("/me/facebook", rateLimit({ windowMs: 60_000, max: 10 }), requireAuth, connectFacebook);
 app.put("/progress/:wordId", requireAuth, updateProgress);
 app.get("/progress", requireAuth, listProgress);
 app.get("/progress/summary", requireAuth, summarizeProgress);

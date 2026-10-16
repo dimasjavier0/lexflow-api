@@ -8,6 +8,9 @@ Cómo y cuándo se actualiza este archivo está en [CLAUDE.md](CLAUDE.md).
 
 ### Added
 
+- Inicio de sesión con Facebook, junto al de Google. Facebook pide permiso para compartir tu lista de amigos, y la foto de la cuenta de Facebook se renueva en cada inicio de sesión, igual que la de Google.
+- Página «Amigos» (`/friends`, en la barra superior): tus amigos de Facebook que usan LexFlow, ordenados por cuántas palabras ha aprendido cada uno (las marcadas como aprendidas y las dominadas en el repaso, igual que en «Mi progreso»), contigo resaltado en la lista. No hay chat: solo se ve el nombre, la foto y la cifra. Si entraste con Google, «Conectar con Facebook» vincula tu cuenta desde ahí; si no compartiste la lista de amigos, «Permitir ver mis amigos» vuelve a pedir el permiso.
+- La API guarda las amistades al entrar con Facebook (`POST /me/facebook`, con el token de Facebook de ese inicio de sesión) y las devuelve con las palabras aprendidas de cada amigo (`GET /me/friends`).
 - Logo nuevo: una gota coral con la L dentro. Aparece junto al nombre en la cabecera y en el inicio de sesión, en la pestaña del navegador y como icono al instalar la app.
 - Barra de progreso en las operaciones del panel admin que recorren varias palabras o imágenes: la lista rápida, «Completar imágenes y sonido» (al buscar y al guardar), «Reparar imágenes» (general y sobre la selección) y «Reemplazar» o «Buscar imágenes» sobre la selección. Muestra cuántas van, la última palabra procesada y el recuento hasta el momento: con imágenes, sin imágenes, sin pronunciación, reparadas o no recuperadas.
 - El aviso final de la lista rápida indica también cuántas palabras quedaron sin imágenes.

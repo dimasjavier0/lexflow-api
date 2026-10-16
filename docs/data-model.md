@@ -7,6 +7,7 @@ User 1 ── N UserWordProgress N ── 1 Word
 Collection N ── N Word             (mediante CollectionWord)
 Word 1 ── N Image | Audio | Video | ExampleSentence
 Word N ── N Word                   (mediante WordRelationship, dirigida y con tipo)
+User N ── N User                   (amigos de Facebook, mediante Friendship)
 ```
 
 ## Decisiones
@@ -22,3 +23,5 @@ Word N ── N Word                   (mediante WordRelationship, dirigida y co
 - `UserWordProgress` incluye el estado SM-2 (`stage`, `repetitions`, `intervalDays`, `easeFactor`, `lastReviewedAt`, `nextReviewAt`). `nextReviewAt = null` significa «pendiente desde ya».
 - `User` incluye perfil (`name`, `avatarUrl`) y gamificación (`pointsTotal`, `streakCurrent`, `streakBest`, `lastActivityOn`). El nivel no se almacena: se deriva de los puntos.
 - Prisma ORM 7 se usa con el adaptador `@prisma/adapter-pg` y el driver `pg` para PostgreSQL.
+- `User.facebookId` es el id de Facebook propio de esta app (app-scoped) y es único; `facebookFriendsGranted` indica si en su último inicio de sesión con Facebook concedió `user_friends`.
+- `Friendship` guarda cada amistad en los dos sentidos (`(userId, friendId)` y `(friendId, userId)`), con clave `(userId, friendId)`. Al entrar con Facebook se reemplazan todas las filas en las que aparece el usuario por la lista que Facebook devuelve en ese momento.
