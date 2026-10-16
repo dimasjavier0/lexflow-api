@@ -61,7 +61,8 @@ npm run check
 
 ## Funcionalidades disponibles
 
-- Login con Google mediante Supabase Auth.
+- Login con Google o Facebook mediante Supabase Auth.
+- Amigos de Facebook en `/friends`: cuántas palabras ha aprendido cada amigo que también usa LexFlow, sin chat. Ver [Facebook y amigos](#facebook-y-amigos).
 - Validación JWT en la API y sincronización de usuarios locales.
 - Colecciones y palabras publicadas desde el panel admin.
 - Progreso por palabra: querer aprender, no interesar y aprendida.
@@ -129,10 +130,32 @@ En la API, esos endpoints aceptan `Accept: application/x-ndjson`. Con esa cabece
 - Puntos (`apps/api/src/services/gamification.ts`): 2 por acierto y 1 por acierto con pista o al segundo intento; dominar una palabra no da puntos extra. El nivel `n` empieza en `(n − 1)² × 20` puntos.
 - La racha cuenta días consecutivos (en UTC) con al menos un repaso y se pierde al saltarse un día.
 
+## Facebook y amigos
+
+El inicio de sesión con Facebook lo resuelve Supabase Auth. La página «Amigos» (`/friends`) muestra a los amigos de Facebook que también usan LexFlow, ordenados por palabras aprendidas: las marcadas como aprendidas más las dominadas en el repaso, la misma cifra que «Mi progreso». Quien entra con Google puede vincular Facebook desde esa página.
+
+### Configuración
+
+1. En [developers.facebook.com](https://developers.facebook.com), crea una app con el caso de uso de inicio de sesión con Facebook y añade los permisos `public_profile`, `email` y `user_friends`.
+2. En los ajustes de Facebook Login, añade `https://<project-ref>.supabase.co/auth/v1/callback` a «Valid OAuth Redirect URIs».
+3. En Supabase, **Authentication → Providers → Facebook**: actívalo y pega el App ID y el App Secret (Facebook: **Settings → Basic**).
+4. En Supabase, activa **Allow manual linking** (ajustes de inicio de sesión de Authentication). Sin esto, «Conectar con Facebook» falla para quien entró con Google.
+5. En Supabase, **Authentication → URL Configuration**, añade `http://localhost:5173/**` a las Redirect URLs, para volver a `/friends` después de conectar Facebook.
+6. En el `.env` de la raíz, `FACEBOOK_APP_SECRET` con el mismo App Secret. Sin él, `POST /me/facebook` responde 503 y la página avisa de que Facebook no está configurado.
+
+Mientras Meta no apruebe `user_friends` en App Review, solo pueden conceder ese permiso las personas con un rol en la app (administradores, desarrolladores y testers); el resto ve «Falta permiso para ver tu lista de amigos». Para publicar la app, Facebook pide además una política de privacidad y una forma de solicitar el borrado de datos.
+
+### Cómo funciona
+
+- Facebook solo devuelve a los amigos que también entraron en LexFlow con Facebook y concedieron `user_friends`. Los demás no aparecen, y tampoco sus datos.
+- Supabase entrega el token de Facebook (`session.provider_token`) solo en la sesión que vuelve de Facebook. La web lo envía una vez a `POST /me/facebook`, y la API lee `/me`, `/me/permissions` y `/me/friends` de la Graph API v26.0, con `appsecret_proof` para rechazar tokens emitidos a otra app. El token no se guarda.
+- La lista se actualiza cada vez que el usuario o alguno de sus amigos entra con Facebook: la lista nueva reemplaza todas las amistades de esa persona, así que dejar de ser amigos en Facebook se refleja en el siguiente inicio de sesión de cualquiera de los dos.
+- `GET /me/friends` responde `{ facebook: { connected, friendsGranted }, me, friends }`, donde cada persona es `{ id, name, avatarUrl, knownWords }`. Nunca incluye el correo de los amigos.
+
 ## Seguridad de la API
 
 - `CORS_ORIGINS` limita los orígenes web permitidos (lista separada por comas). Si está vacío se acepta cualquier origen, lo que solo es adecuado en desarrollo local.
-- La API limita cada IP a 300 peticiones por minuto, y a 30 por minuto en las rutas que llaman a Pixabay o ejecutan Piper (búsqueda, reparación y acciones sobre varias palabras incluidas). El contador vive en memoria: con más de una instancia hará falta un almacén compartido.
+- La API limita cada IP a 300 peticiones por minuto, a 30 por minuto en las rutas que llaman a Pixabay o ejecutan Piper (búsqueda, reparación y acciones sobre varias palabras incluidas) y a 10 por minuto en `POST /me/facebook`, que lee la lista de amigos de Facebook. El contador vive en memoria: con más de una instancia hará falta un almacén compartido.
 
 ## Pronunciación local
 
