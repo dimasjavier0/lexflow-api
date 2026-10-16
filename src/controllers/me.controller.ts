@@ -2,7 +2,7 @@ import type { Request, Response } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma.js";
 import { currentStreak, levelProgress } from "../services/gamification.js";
-import { googleProfile, googleProfilePatch } from "../services/google-profile.js";
+import { providerProfile, providerProfilePatch } from "../services/provider-profile.js";
 import { REVIEW_LEVELS, reviewLevel, upcomingReviews } from "../services/srs.js";
 import { countDueReviews, reviewableWhere } from "./review.controller.js";
 
@@ -53,15 +53,15 @@ export async function getMe(request: Request, response: Response): Promise<void>
     return;
   }
 
-  const google = googleProfile(authUser.claims);
+  const provider = providerProfile(authUser.claims);
   let user = await prisma.user.upsert({
     where: { id: authUser.id },
     update: { email: authUser.email },
-    create: { id: authUser.id, email: authUser.email, ...google },
+    create: { id: authUser.id, email: authUser.email, ...provider },
     select: profileSelect,
   });
-  // Accounts created before this, and pictures changed on Google since, catch up here.
-  const patch = googleProfilePatch(user, google);
+  // Accounts created before this, and pictures changed on Google or Facebook since, catch up here.
+  const patch = providerProfilePatch(user, provider);
   if (patch) user = await prisma.user.update({ where: { id: authUser.id }, data: patch, select: profileSelect });
 
   response.status(200).json({ user: toProfile(user) });

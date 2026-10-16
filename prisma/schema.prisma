@@ -69,6 +69,12 @@ model User {
   streakBest     Int       @default(0)
   /// Último día (UTC) con al menos un repaso; base del cálculo de la racha.
   lastActivityOn DateTime? @db.Date
+  /// Id de Facebook propio de esta app (app-scoped); null si nunca entró con Facebook.
+  facebookId     String?   @unique
+  /// Si en su último inicio de sesión con Facebook concedió el permiso `user_friends`.
+  facebookFriendsGranted Boolean @default(false)
+  friends        Friendship[] @relation("UserFriends")
+  friendOf       Friendship[] @relation("FriendOfUser")
   createdAt DateTime           @default(now())
   updatedAt DateTime           @updatedAt
   progress  UserWordProgress[]
@@ -222,4 +228,17 @@ model UserWordProgress {
   @@index([userId, status])
   @@index([userId, nextReviewAt])
   @@index([wordId])
+}
+
+/// Amistad de Facebook entre dos usuarios de LexFlow. Se guarda en los dos sentidos,
+/// así «mis amigos» es una consulta por `userId`.
+model Friendship {
+  userId    String   @db.Uuid
+  friendId  String   @db.Uuid
+  createdAt DateTime @default(now())
+  user      User     @relation("UserFriends", fields: [userId], references: [id], onDelete: Cascade)
+  friend    User     @relation("FriendOfUser", fields: [friendId], references: [id], onDelete: Cascade)
+
+  @@id([userId, friendId])
+  @@index([friendId])
 }
