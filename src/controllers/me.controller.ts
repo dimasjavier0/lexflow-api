@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma.js";
+import { isCountryCode } from "../lib/countries.js";
 import { currentStreak, levelProgress } from "../services/gamification.js";
 import { providerProfile, providerProfilePatch } from "../services/provider-profile.js";
 import { REVIEW_LEVELS, reviewLevel, upcomingReviews } from "../services/srs.js";
@@ -12,6 +13,7 @@ const profileSelect = {
   role: true,
   name: true,
   avatarUrl: true,
+  country: true,
   pointsTotal: true,
   streakCurrent: true,
   streakBest: true,
@@ -26,6 +28,7 @@ type ProfileRow = {
   role: string;
   name: string | null;
   avatarUrl: string | null;
+  country: string | null;
   pointsTotal: number;
   streakCurrent: number;
   streakBest: number;
@@ -43,6 +46,8 @@ export function toProfile(user: ProfileRow, now = new Date()) {
 const updateProfileSchema = z.object({
   name: z.string().trim().min(1).max(60).nullable().optional(),
   avatarUrl: z.string().trim().url().max(500).nullable().optional(),
+  /** ISO 3166-1 alpha-2 code; places the learner in their country's ranking. */
+  country: z.string().trim().toUpperCase().refine(isCountryCode).nullable().optional(),
 });
 
 export async function getMe(request: Request, response: Response): Promise<void> {
