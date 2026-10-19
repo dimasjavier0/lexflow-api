@@ -1,57 +1,52 @@
-# LexFlow
+# LexFlow API
 
-Plataforma web para aprender vocabulario de inglés mediante imagen, audio y contexto.
+API REST de LexFlow, la plataforma para aprender vocabulario de inglés mediante imagen, audio y contexto. Express 5, TypeScript, Prisma 7 y PostgreSQL, con autenticación de Supabase.
 
-Versión actual: **0.6.0**. El historial por versiones está en [CHANGELOG.md](CHANGELOG.md) y el flujo de trabajo del repositorio (ramas, commits y versiones), en [CLAUDE.md](CLAUDE.md).
+La web que la consume está en [lexflow-web](https://github.com/dimasjavier0/lexflow-web). Hasta la versión 0.6.0, ambas vivían en el monorepo [LexFlow-1.0](https://github.com/dimasjavier0/LexFlow-1.0).
 
-## Monorepo
+Versión actual: **1.0.0**. El historial por versiones está en [CHANGELOG.md](CHANGELOG.md) y en las [releases](https://github.com/dimasjavier0/lexflow-api/releases), y el flujo de trabajo del repositorio (ramas, commits y versiones), en [CLAUDE.md](CLAUDE.md).
+
+## Estructura
 
 ```text
-apps/
-  api/       API REST (Express + TypeScript)
-  web/       Cliente web (React + Vite + Tailwind)
-packages/
-  config/    Configuración compartida
-  schemas/   Esquemas Zod compartidos
-  shared/    Tipos, enums y contratos compartidos
-docker/      Entorno local de infraestructura
+src/
+  server.ts       Arranque: rutas y middlewares
+  routes/         Router de /admin
+  controllers/    Una función por endpoint, validación con Zod
+  services/       SM-2, gamificación, Pixabay, Piper, Facebook, fuentes de video
+  middlewares/    Autenticación, admin, límite de peticiones, subidas, errores
+  lib/            Utilidades (progreso NDJSON, caché, texto, errores de Prisma)
+  db/prisma.ts    Cliente de Prisma
+prisma/           Schema, migraciones y seed
+docker/           PostgreSQL local
+docs/             Modelo de datos
+uploads/          Imágenes y audios guardados (local, no versionado)
+models/piper/     Voces de Piper (local, no versionado)
 ```
 
-## Requisitos actuales
+## Requisitos
 
 - Node.js 22 o superior
 - npm 11 o superior
+- Docker, para PostgreSQL local. Se expone en el puerto `5433` para evitar conflictos con otros servicios de Windows.
 
-PostgreSQL local se ejecuta con Docker y se expone en el puerto `5433` para evitar conflictos con otros servicios de Windows.
+## Puesta en marcha
 
-## Base de datos local
-
-Desde la raíz del proyecto:
+Desde la raíz del repositorio:
 
 ```bash
+npm install
+cp .env.example .env              # y rellena las claves
 docker compose -f docker/docker-compose.yml up -d
-npm run db:migrate --workspace=@lexflow/api -- --name initial_schema
-npm run db:seed --workspace=@lexflow/api
+npm run db:migrate                # aplica las migraciones y genera el cliente de Prisma
+npm run db:seed                   # colección A1 de alimentos; idempotente
+npm run dev
 ```
 
-La migración inicial queda versionada en `apps/api/prisma/migrations/`. El seed crea una colección A1 de alimentos y es idempotente.
-
-## Desarrollo
-
-En terminales separadas:
-
-```bash
-npm run dev:api
-npm run dev:web
-```
-
-URLs locales:
-
-- Web: `http://localhost:5173`
 - API: `http://localhost:3000/health`
-- Prisma Studio: `npm run db:studio --workspace=@lexflow/api`
+- Prisma Studio: `npm run db:studio`
 
-Arranca siempre los servidores desde la raíz del repositorio. La API sirve los archivos de `apps/api/uploads/` de la carpeta desde la que se lanza: iniciada desde otra copia del proyecto (por ejemplo, un worktree de git), las imágenes y los audios guardados responden 404.
+Arranca la API siempre desde la raíz de este repositorio: el `.env`, `uploads/` y `models/piper/` se buscan ahí. Iniciada desde otra copia (por ejemplo, un worktree de git), las imágenes y los audios guardados responden 404.
 
 Antes de dar un cambio por terminado:
 
@@ -59,80 +54,90 @@ Antes de dar un cambio por terminado:
 npm run check
 ```
 
-## Funcionalidades disponibles
+### Scripts
 
-- Login con Google o Facebook mediante Supabase Auth.
-- Amigos de Facebook en `/friends`: cuántas palabras ha aprendido cada amigo que también usa LexFlow, sin chat. Ver [Facebook y amigos](#facebook-y-amigos).
-- Validación JWT en la API y sincronización de usuarios locales.
-- Colecciones y palabras publicadas desde el panel admin.
+| Script               | Qué hace                                             |
+| -------------------- | ---------------------------------------------------- |
+| `npm run dev`        | API con recarga automática (`tsx watch`)             |
+| `npm run build`      | Compila a `dist/`                                    |
+| `npm start`          | Arranca la versión compilada                         |
+| `npm run check`      | Comprueba los tipos                                  |
+| `npm run db:migrate` | `prisma migrate dev`                                 |
+| `npm run db:generate`| Genera el cliente de Prisma en `src/generated/prisma`|
+| `npm run db:seed`    | Datos de ejemplo                                     |
+| `npm run db:studio`  | Prisma Studio                                        |
+
+## Variables de entorno
+
+Todas en el `.env` de la raíz; la plantilla es [.env.example](.env.example).
+
+| Variable                                       | Uso                                                                                   |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                                 | Conexión a PostgreSQL.                                                                |
+| `SUPABASE_URL`, `SUPABASE_JWT_SECRET`          | Validación del JWT de Supabase (JWKS con `SUPABASE_URL`; HS256 con el secreto si está vacía). |
+| `API_PORT`                                     | Puerto de la API (3000 por defecto).                                                  |
+| `CORS_ORIGINS`                                 | Orígenes web permitidos, separados por comas. Vacío = cualquiera (solo en local).     |
+| `PIXABAY_API_KEY`                              | Búsqueda y descarga de imágenes.                                                      |
+| `FACEBOOK_APP_SECRET`                          | Lectura de la lista de amigos de Facebook.                                            |
+| `PEXELS_API_KEY`, `YOUTUBE_API_KEY`            | Opcionales: fuentes extra del buscador de videos.                                     |
+| `WIKIMEDIA_USER_AGENT`                         | Opcional: identifica la app ante Wikimedia.                                           |
+| `PIPER_PATH`, `PIPER_VOICE_MODEL_US`, `PIPER_VOICE_MODEL_UK` | Pronunciación con Piper. Las rutas relativas parten de la raíz del repo. |
+
+## Funcionalidades
+
+- Validación del JWT de Supabase y sincronización de usuarios locales (Google y Facebook).
+- Colecciones y palabras publicadas, búsqueda con autocompletado y filtro por nivel CEFR. Los estudiantes solo ven palabras publicadas.
 - Progreso por palabra: querer aprender, no interesar y aprendida.
-- Recursos manuales de imagen, audio y video mediante URL.
-- Selección de nivel CEFR, lecciones que omiten las palabras ya conocidas y avance por colección.
-- Publicación por palabra; los estudiantes solo ven palabras publicadas.
-- Búsqueda de imágenes en Pixabay y eliminación de colecciones, palabras y recursos desde el panel. Cada colección tiene un botón «Eliminar» que pide confirmación antes de borrarla; sus palabras se conservan si también están en otra colección.
-- Las imágenes de Pixabay se guardan en el servidor, y el panel puede reparar las que quedaron con un enlace caducado.
-- Selección de varias palabras de una colección para publicarlas, pasarlas a borrador, reparar, reemplazar o eliminar sus imágenes, o quitarlas de la colección.
-- Lista rápida de palabras e importación de varias listas en Markdown, con detección de duplicados. Cada línea es `palabra en inglés, traducción, nivel` (`cat, gato, A1`); el nivel es opcional (A1 si falta), solo se aplica a las palabras nuevas y uno que no sea A1–C2 marca la línea como inválida. Antes de guardar muestra una vista previa con cada lista como la colección en la que quedará y cada palabra con su imagen, traducción y nivel; al pulsar una palabra se pueden cambiar sus imágenes de Pixabay. Nada se guarda hasta pulsar «Confirmar y guardar».
-- Vista previa de las imágenes y la pronunciación que faltan en una colección, que se guardan al confirmar.
-- Buscador de videos (YouGlish, Pixabay, Pexels, Dailymotion, Wikimedia y YouTube) y de grabaciones de la pronunciación.
-- Selector de tema con tonos de color y modo oscuro.
-- Categoría gramatical, frecuencia, oraciones de ejemplo y palabras relacionadas por palabra.
-- Repaso espaciado (SM-2) en `/review`: imagen, audio y escribir la palabra.
-- Perfil con puntos, nivel y racha en `/profile`, y búsqueda de palabras con autocompletado.
-- Dashboard admin con tarjetas de acciones, colecciones expandibles y carga de imágenes por arrastre.
-- Editor reutilizable de palabras para crear y editar término, traducción, nivel, enlace de imagen y archivo arrastrado.
-- Manifest y service worker básicos para instalación como PWA.
+- Repaso espaciado (SM-2), puntos, nivel y racha.
+- Amigos de Facebook con las palabras aprendidas de cada uno. Ver [Facebook y amigos](#facebook-y-amigos).
+- Panel admin (`/admin`, requiere `role = 'ADMIN'` en la tabla `User`):
+  - Colecciones y palabras con imágenes, audios, videos, categoría gramatical, frecuencia, oraciones de ejemplo y palabras relacionadas.
+  - Subida de imágenes, búsqueda en Pixabay y reparación de enlaces caducados.
+  - Lista rápida e importación de varias listas, con vista previa antes de guardar.
+  - Vista previa y guardado de las imágenes y la pronunciación que faltan en una colección.
+  - Acciones sobre varias palabras a la vez.
+  - Buscador de videos (YouGlish, Pixabay, Pexels, Dailymotion, Wikimedia y YouTube) y de grabaciones de la pronunciación.
+  - Pronunciación generada con Piper TTS.
 
-Las imágenes arrastradas, las descargadas de Pixabay y los audios generados se guardan localmente en `apps/api/uploads/` y su URL queda registrada en PostgreSQL. La carpeta no se versiona. Este almacenamiento está pensado para desarrollo local; producción deberá migrarlo a Supabase Storage o a un bucket S3-compatible.
-
-El panel admin requiere que el usuario tenga `role = 'ADMIN'` en la base PostgreSQL local.
+Las imágenes subidas, las descargadas de Pixabay y los audios generados se guardan en `uploads/` y la API los sirve en `/uploads/...`; su URL queda registrada en PostgreSQL. La carpeta no se versiona. Este almacenamiento está pensado para desarrollo local; en producción deberá pasar a un bucket S3 o compatible.
 
 ## Imágenes de Pixabay
 
-Pixabay entrega cada imagen con un enlace temporal (`https://pixabay.com/get/...`) que deja de funcionar a las 24 horas y no permite enlazarlas de forma permanente. Por eso la API descarga la imagen a `apps/api/uploads/` en el momento de guardarla y registra esa URL local. Requiere `PIXABAY_API_KEY` en el `.env` de la raíz.
+Pixabay entrega cada imagen con un enlace temporal (`https://pixabay.com/get/...`) que deja de funcionar a las 24 horas y no permite enlazarlas de forma permanente. Por eso la API descarga la imagen a `uploads/` en el momento de guardarla y registra esa URL local. Requiere `PIXABAY_API_KEY`.
 
-- **Reparar imágenes** (cabecera de «Colecciones» en el panel admin): busca las imágenes que aún apuntan a un enlace temporal, las vuelve a pedir a Pixabay por su id y las guarda en el servidor. Procesa hasta 80 por pulsación, por el límite de 100 peticiones por minuto de Pixabay, y avisa si quedan pendientes.
+- **Reparar imágenes** (`POST /admin/images/repair`): busca las imágenes que aún apuntan a un enlace temporal, las vuelve a pedir a Pixabay por su id y las guarda en el servidor. Procesa hasta 80 por llamada, por el límite de 100 peticiones por minuto de Pixabay, e indica si quedan pendientes.
 - Las portadas de colección no conservan el id de Pixabay: una portada caducada se sustituye por el primer resultado para el nombre de la colección.
-- Si Pixabay ya no tiene una imagen, la reparación la cuenta como no recuperada; usa «Reemplazar imágenes» sobre esas palabras.
+- Si Pixabay ya no tiene una imagen, la reparación la cuenta como no recuperada; hay que reemplazar las imágenes de esas palabras.
 
 ## Acciones sobre varias palabras
 
-Al abrir una colección en el panel admin, cada palabra tiene una casilla y la barra superior permite seleccionarlas todas. Las acciones se aplican solo a las palabras visibles con el filtro activo, hasta 200 a la vez. Las palabras que el filtro oculta conservan su casilla para cuando vuelvan a listarse. La barra solo muestra las acciones que tienen efecto sobre la selección:
+`POST /admin/collections/:collectionId/words/actions` aplica una acción a hasta 200 palabras de una colección:
 
-| Acción                 | Aparece cuando                  | Efecto                                                                         |
-| ---------------------- | ------------------------------- | ------------------------------------------------------------------------------ |
-| Publicar               | Hay algún borrador.             | Las hace visibles para los estudiantes.                                        |
-| Pasar a borrador       | Hay alguna publicada.           | Las oculta a los estudiantes.                                                  |
-| Reparar imágenes       | Alguna imagen está caducada.    | Descarga al servidor sus imágenes de Pixabay con enlace caducado.              |
-| Reemplazar imágenes    | Alguna palabra tiene imágenes.  | Sustituye sus imágenes por una búsqueda nueva en Pixabay. Pide confirmación.   |
-| Buscar imágenes        | Ninguna palabra tiene imágenes. | Les añade imágenes con una búsqueda en Pixabay.                                |
-| Eliminar imágenes      | Alguna palabra tiene imágenes.  | Borra todas sus imágenes y los archivos guardados. Pide confirmación.          |
-| Quitar de la colección | Siempre.                        | Las saca de la colección; se borran si no están en ninguna otra. Pide confirmación. |
+| Acción                 | Efecto                                                              |
+| ---------------------- | ------------------------------------------------------------------- |
+| Publicar               | Las hace visibles para los estudiantes.                             |
+| Pasar a borrador       | Las oculta a los estudiantes.                                       |
+| Reparar imágenes       | Descarga al servidor sus imágenes de Pixabay con enlace caducado.   |
+| Reemplazar imágenes    | Sustituye sus imágenes por una búsqueda nueva en Pixabay.           |
+| Buscar imágenes        | Añade imágenes de Pixabay a las palabras que no tienen.             |
+| Eliminar imágenes      | Borra todas sus imágenes y los archivos guardados.                  |
+| Quitar de la colección | Las saca de la colección; se borran si no están en ninguna otra.    |
 
 ## Progreso de las operaciones largas
 
-Las operaciones del panel admin que recorren varias palabras o imágenes muestran una barra de progreso con el recuento hasta el momento (por ejemplo, cuántas palabras ya tienen imágenes y cuántas se quedaron sin ellas):
-
-- Lista rápida, lista por lista, al preparar la vista previa y al guardar.
-- «Completar imágenes y sonido», al buscar las propuestas y al guardarlas.
-- «Reparar imágenes», tanto el botón general como el de las palabras seleccionadas.
-- «Reemplazar imágenes» y «Buscar imágenes» sobre las palabras seleccionadas.
-
-Publicar, pasar a borrador, eliminar imágenes y quitar palabras son una sola consulta y no muestran barra.
-
-En la API, esos endpoints aceptan `Accept: application/x-ndjson`. Con esa cabecera responden con una línea JSON por paso (`{"type":"progress","done":3,"total":18,"item":"cat","counts":{...}}`) y una última con el cuerpo habitual (`{"type":"result","body":{...}}`); si la operación falla a mitad, la última línea es `{"type":"error"}`. Sin la cabecera devuelven el JSON de siempre. El código común está en `apps/api/src/lib/progress-stream.ts` y, en la web, en `apiRequest` (`onProgress`) y el componente `ProgressBar`.
+Los endpoints que recorren varias palabras o imágenes (lista rápida al previsualizar y al guardar, «Completar imágenes y sonido», reparación de imágenes y las acciones de reparar, reemplazar o buscar imágenes) aceptan `Accept: application/x-ndjson`. Con esa cabecera responden con una línea JSON por paso (`{"type":"progress","done":3,"total":18,"item":"cat","counts":{...}}`) y una última con el cuerpo habitual (`{"type":"result","body":{...}}`); si la operación falla a mitad, la última línea es `{"type":"error"}`. Sin la cabecera devuelven el JSON de siempre. El código común está en `src/lib/progress-stream.ts`.
 
 ## Repaso espaciado y gamificación
 
-- Una palabra entra en el repaso cuando el estudiante la marca como «Quiero aprender». Cada repaso aplica SM-2 (`apps/api/src/services/srs.ts`): un acierto alarga el intervalo (1, 6 y después `intervalo × facilidad` días) y un fallo la devuelve al día siguiente.
+- Una palabra entra en el repaso cuando el estudiante la marca como «Quiero aprender». Cada repaso aplica SM-2 (`src/services/srs.ts`): un acierto alarga el intervalo (1, 6 y después `intervalo × facilidad` días) y un fallo la devuelve al día siguiente.
 - Cuatro aciertos seguidos convierten la palabra en dominada; un fallo posterior la devuelve a «aprendiendo».
 - Si la respuesta es incorrecta, el estudiante puede reintentar una vez antes de ver la solución; el primer fallo no se registra.
-- Puntos (`apps/api/src/services/gamification.ts`): 2 por acierto y 1 por acierto con pista o al segundo intento; dominar una palabra no da puntos extra. El nivel `n` empieza en `(n − 1)² × 20` puntos.
+- Puntos (`src/services/gamification.ts`): 2 por acierto y 1 por acierto con pista o al segundo intento; dominar una palabra no da puntos extra. El nivel `n` empieza en `(n − 1)² × 20` puntos.
 - La racha cuenta días consecutivos (en UTC) con al menos un repaso y se pierde al saltarse un día.
 
 ## Facebook y amigos
 
-El inicio de sesión con Facebook lo resuelve Supabase Auth. La página «Amigos» (`/friends`) muestra a los amigos de Facebook que también usan LexFlow, ordenados por palabras aprendidas: las marcadas como aprendidas más las dominadas en el repaso, la misma cifra que «Mi progreso». Quien entra con Google puede vincular Facebook desde esa página.
+El inicio de sesión con Facebook lo resuelve Supabase Auth en la web. La API guarda las amistades y calcula cuántas palabras ha aprendido cada amigo: las marcadas como aprendidas más las dominadas en el repaso.
 
 ### Configuración
 
@@ -140,10 +145,10 @@ El inicio de sesión con Facebook lo resuelve Supabase Auth. La página «Amigos
 2. En los ajustes de Facebook Login, añade `https://<project-ref>.supabase.co/auth/v1/callback` a «Valid OAuth Redirect URIs».
 3. En Supabase, **Authentication → Providers → Facebook**: actívalo y pega el App ID y el App Secret (Facebook: **Settings → Basic**).
 4. En Supabase, activa **Allow manual linking** (ajustes de inicio de sesión de Authentication). Sin esto, «Conectar con Facebook» falla para quien entró con Google.
-5. En Supabase, **Authentication → URL Configuration**, añade `http://localhost:5173/**` a las Redirect URLs, para volver a `/friends` después de conectar Facebook.
-6. En el `.env` de la raíz, `FACEBOOK_APP_SECRET` con el mismo App Secret. Sin él, `POST /me/facebook` responde 503 y la página avisa de que Facebook no está configurado.
+5. En Supabase, **Authentication → URL Configuration**, añade la URL de la web (`http://localhost:5173/**` en local) a las Redirect URLs.
+6. En el `.env`, `FACEBOOK_APP_SECRET` con el mismo App Secret. Sin él, `POST /me/facebook` responde 503 y la web avisa de que Facebook no está configurado.
 
-Mientras Meta no apruebe `user_friends` en App Review, solo pueden conceder ese permiso las personas con un rol en la app (administradores, desarrolladores y testers); el resto ve «Falta permiso para ver tu lista de amigos». Para publicar la app, Facebook pide además una política de privacidad y una forma de solicitar el borrado de datos.
+Mientras Meta no apruebe `user_friends` en App Review, solo pueden conceder ese permiso las personas con un rol en la app (administradores, desarrolladores y testers). Para publicar la app, Facebook pide además una política de privacidad y una forma de solicitar el borrado de datos.
 
 ### Cómo funciona
 
@@ -152,19 +157,19 @@ Mientras Meta no apruebe `user_friends` en App Review, solo pueden conceder ese 
 - La lista se actualiza cada vez que el usuario o alguno de sus amigos entra con Facebook: la lista nueva reemplaza todas las amistades de esa persona, así que dejar de ser amigos en Facebook se refleja en el siguiente inicio de sesión de cualquiera de los dos.
 - `GET /me/friends` responde `{ facebook: { connected, friendsGranted }, me, friends }`, donde cada persona es `{ id, name, avatarUrl, knownWords }`. Nunca incluye el correo de los amigos.
 
-## Seguridad de la API
+## Seguridad
 
 - `CORS_ORIGINS` limita los orígenes web permitidos (lista separada por comas). Si está vacío se acepta cualquier origen, lo que solo es adecuado en desarrollo local.
 - La API limita cada IP a 300 peticiones por minuto, a 30 por minuto en las rutas que llaman a Pixabay o ejecutan Piper (búsqueda, reparación y acciones sobre varias palabras incluidas) y a 10 por minuto en `POST /me/facebook`, que lee la lista de amigos de Facebook. El contador vive en memoria: con más de una instancia hará falta un almacén compartido.
 
 ## Pronunciación local
 
-LexFlow puede generar pronunciaciones gratuitas con Piper TTS. Piper y las voces descargadas localmente quedan en el entorno Python y en `apps/api/models/piper/`. Configura en el `.env` de la raíz:
+LexFlow puede generar pronunciaciones gratuitas con Piper TTS. Piper se instala en un entorno Python y las voces se descargan a `models/piper/`. Configura en el `.env`:
 
 ```env
-PIPER_PATH="C:/Users/NAMEUSER/.pyenv/pyenv-win/versions/3.12.4/Scripts/piper.exe"
-PIPER_VOICE_MODEL_US="apps/api/models/piper/en_US-amy-medium.onnx"
-PIPER_VOICE_MODEL_UK="apps/api/models/piper/en_GB-alan-medium.onnx"
+PIPER_PATH="C:/ruta/a/piper.exe"
+PIPER_VOICE_MODEL_US="models/piper/en_US-amy-medium.onnx"
+PIPER_VOICE_MODEL_UK="models/piper/en_GB-alan-medium.onnx"
 ```
 
-Después de guardar una palabra desde el panel admin, abre su editor, elige el acento y pulsa `Generar pronunciación`. El audio se guarda en la tabla `Audio` y queda disponible para los estudiantes.
+Desde el panel admin de la web, en el editor de una palabra guardada, se elige el acento y se pulsa «Generar pronunciación». El audio se guarda en `uploads/`, se registra en la tabla `Audio` y queda disponible para los estudiantes.

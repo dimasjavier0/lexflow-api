@@ -1,6 +1,8 @@
-# LexFlow: flujo de trabajo
+# LexFlow API: flujo de trabajo
 
 Este archivo se carga al empezar cada conversación. Sigue estos pasos en todo cambio de código o de documentación.
+
+Este repositorio es uno de los dos de LexFlow: la web está en `lexflow-web`. Hasta la 0.6.0 ambos vivían en el monorepo `LexFlow-1.0`.
 
 ## Ramas: una por función
 
@@ -16,12 +18,13 @@ Este archivo se carga al empezar cada conversación. Sigue estos pasos en todo c
   | `chore/`    | Dependencias, configuración, limpieza | `chore/upgrade-prisma`       |
 
 - Nombres en inglés, minúsculas y con guiones. Una rama, un tema: si aparece otro trabajo, va en otra rama.
+- Si un cambio necesita a la vez la API y la web, se hace una rama con el mismo nombre en cada repo, y se fusiona primero la de la API.
 
 ## Pasos de cada cambio
 
 1. **Crear la rama** desde `main` actualizada: `git switch main && git switch -c feat/<nombre>`.
 2. **Implementar** el cambio.
-3. **Verificar**: `npm run check` debe pasar. Los cambios de interfaz se prueban en el navegador, también a ancho de móvil (390 px).
+3. **Verificar**: `npm run check` debe pasar. Si cambia el schema de Prisma, se añade una migración en `prisma/migrations/`.
 4. **Documentar** en el mismo trabajo:
    - `CHANGELOG.md`: una línea por cambio bajo `## [Unreleased]`, en `Added`, `Changed` o `Fixed`, en español y contando lo que nota quien usa la app.
    - `README.md`: si cambia una funcionalidad, un comando, una variable de entorno o la forma de arrancar el proyecto.
@@ -30,18 +33,20 @@ Este archivo se carga al empezar cada conversación. Sigue estos pasos en todo c
 6. **Fusionar en `main`** cuando la función está completa y verificada: `git switch main && git merge --no-ff feat/<nombre>`. La rama ya fusionada se puede borrar.
 7. **Push** a `origin` solo cuando el usuario lo pida.
 
-## Versiones
+## Versiones y releases
 
-- La versión vive en `package.json` de la raíz (y en `package-lock.json`) y sigue SemVer: `feat` sube la versión menor, `fix` la de parche.
+- La versión vive en `package.json` (y en `package-lock.json`) y sigue SemVer: `feat` sube la versión menor, `fix` la de parche. Cada repo versiona por su cuenta.
 - Al publicar una versión en `main`:
-  1. En `CHANGELOG.md`, lo acumulado en `[Unreleased]` pasa a `## [X.Y.Z] - AAAA-MM-DD`, y `[Unreleased]` queda vacío encima.
-  2. Se actualiza la versión en `package.json` y `package-lock.json`.
+  1. En `CHANGELOG.md`, lo acumulado en `[Unreleased]` pasa a `## [X.Y.Z] - AAAA-MM-DD`, y `[Unreleased]` queda vacío encima. Al final del archivo se añade el enlace `[X.Y.Z]: https://github.com/dimasjavier0/lexflow-api/releases/tag/vX.Y.Z` y se actualiza el de `[Unreleased]` (`compare/vX.Y.Z...HEAD`).
+  2. Se actualiza la versión en `package.json` y `package-lock.json` (`npm version X.Y.Z --no-git-tag-version`).
   3. Se etiqueta el commit de fusión: `git tag vX.Y.Z`.
+  4. Cuando el usuario pida el push: `git push origin main --tags` y `gh release create vX.Y.Z --title "vX.Y.Z" --notes-file <notas>`, con la sección de esa versión del CHANGELOG como notas.
 - Varias funciones fusionadas el mismo día pueden compartir una versión.
 
 ## Entorno local
 
-- Los servidores se arrancan desde la raíz del repositorio: `npm run dev:api` (puerto 3000) y `npm run dev:web` (puerto 5173). El `.env` de la raíz alimenta a ambos.
-- No arranques la API desde un worktree (`.claude/worktrees/...`): usaría su propia carpeta `apps/api/uploads`, vacía, y las imágenes y audios guardados responderían 404.
+- La API se arranca desde la raíz de este repositorio: `npm run dev` (puerto 3000). El `.env`, `uploads/` y `models/piper/` de la raíz son los suyos.
+- La web está en el repositorio hermano `lexflow-web` (`npm run dev`, puerto 5173), con su propio `.env`.
+- No arranques la API desde un worktree (`.claude/worktrees/...`): usaría su propia carpeta `uploads/`, vacía, y las imágenes y audios guardados responderían 404.
 - Antes de usar el puerto 3000 o 5173, comprueba si ya hay un servidor escuchando y desde qué carpeta se lanzó.
-- Los archivos de `apps/api/uploads/` no se versionan: son datos locales que acompañan a la base de datos.
+- Los archivos de `uploads/` y `models/piper/` no se versionan: son datos locales que acompañan a la base de datos.
