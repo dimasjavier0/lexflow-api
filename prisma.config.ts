@@ -3,7 +3,7 @@ import { defineConfig, env } from "prisma/config";
 import { fileURLToPath } from "node:url";
 
 dotenv.config({
-  path: fileURLToPath(new URL("../../.env", import.meta.url)),
+  path: fileURLToPath(new URL("./.env", import.meta.url)),
   override: true,
 });
 
