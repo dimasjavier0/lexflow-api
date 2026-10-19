@@ -89,6 +89,7 @@ Todas en el `.env` de la raíz; la plantilla es [.env.example](.env.example).
 - Colecciones y palabras publicadas, búsqueda con autocompletado y filtro por nivel CEFR. Los estudiantes solo ven palabras publicadas.
 - Progreso por palabra: querer aprender, no interesar y aprendida.
 - Repaso espaciado (SM-2), puntos, nivel y racha.
+- Clasificación diaria, semanal y mensual, con filtro por país. Ver [Clasificación](#clasificación).
 - Amigos de Facebook con las palabras aprendidas de cada uno. Ver [Facebook y amigos](#facebook-y-amigos).
 - Panel admin (`/admin`, requiere `role = 'ADMIN'` en la tabla `User`):
   - Colecciones y palabras con imágenes, audios, videos, categoría gramatical, frecuencia, oraciones de ejemplo y palabras relacionadas.
@@ -134,6 +135,15 @@ Los endpoints que recorren varias palabras o imágenes (lista rápida al previsu
 - Si la respuesta es incorrecta, el estudiante puede reintentar una vez antes de ver la solución; el primer fallo no se registra.
 - Puntos (`src/services/gamification.ts`): 2 por acierto y 1 por acierto con pista o al segundo intento; dominar una palabra no da puntos extra. El nivel `n` empieza en `(n − 1)² × 20` puntos.
 - La racha cuenta días consecutivos (en UTC) con al menos un repaso y se pierde al saltarse un día.
+
+## Clasificación
+
+`GET /leaderboard?period=day|week|month&country=CO` (con sesión) ordena a los estudiantes por los puntos ganados en el periodo actual: hoy, esta semana desde el lunes o este mes, en días UTC. Sin `period` usa la semana; sin `country`, todos los países.
+
+- Los puntos de cada repaso se suman a un total por día (`UserDailyPoints`, `src/services/leaderboard.ts`), y cada periodo suma sus días. Los puntos ganados antes de existir esa tabla no cuentan en ningún periodo; `pointsTotal` sigue siendo el total histórico.
+- Responde `{ period, country, endsAt, countries, rows, viewer }`: los 50 primeros (los empates comparten puesto), la fila de quien consulta esté donde esté (`null` si no ganó puntos en el periodo), el momento en que el periodo se reinicia y los países que tiene algún estudiante, para el filtro. Quien no ganó puntos en el periodo no aparece.
+- De los demás estudiantes solo se ve el nombre y la inicial del apellido, sin foto; quien consulta ve su fila completa.
+- Cada estudiante elige su país con `PATCH /me` (`country`, código ISO 3166-1 de dos letras, o `null`).
 
 ## Facebook y amigos
 

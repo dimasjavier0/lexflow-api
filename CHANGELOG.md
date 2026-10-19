@@ -15,6 +15,8 @@ Primera versión como repositorio propio, lista para desplegarse por separado de
 
 ### Added
 
+- Clasificación de estudiantes (`GET /leaderboard`) por los puntos ganados hoy, esta semana (desde el lunes) o este mes, en días UTC, con filtro opcional por país (`?period=day|week|month&country=CO`). Devuelve los 50 primeros más la fila de quien consulta, esté donde esté, si ganó puntos en el periodo; de los demás solo se ve el nombre y la inicial del apellido. Los puntos de cada repaso se suman también a un total por día, y solo cuentan los ganados desde esta versión.
+- El perfil admite el país del estudiante (`PATCH /me` con `country`, código ISO de dos letras), que lo sitúa en la clasificación de su país.
 - Amigos de Facebook: `POST /me/facebook` recibe el token de Facebook del inicio de sesión, lee la lista de amigos con la Graph API (firmada con `FACEBOOK_APP_SECRET`) y guarda las amistades; `GET /me/friends` las devuelve con las palabras aprendidas de cada amigo. El token no se guarda y la respuesta nunca incluye el correo de los amigos.
 - Avance de las operaciones largas línea a línea (NDJSON) cuando la petición lleva `Accept: application/x-ndjson`: lista rápida, «Completar imágenes y sonido», «Reparar imágenes» y acciones sobre varias palabras. Cada línea dice cuántas van, la última palabra procesada y el recuento hasta el momento (con imágenes, sin imágenes, sin pronunciación, reparadas o no recuperadas). Sin esa cabecera responden como antes.
 - Cada palabra de la lista rápida puede llevar su nivel CEFR (A1–C2). Sin él se crea en A1, y las palabras que ya existen conservan el suyo.
