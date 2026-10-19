@@ -6,10 +6,12 @@ coverage/
 !.env.example
 *.log
 .DS_Store
-apps/api/uploads/
-apps/api/models/piper/
+
+# Datos locales: imágenes y audios guardados, y voces de Piper
+uploads/
+models/piper/
 
 # Prisma
-apps/api/prisma/dev.db
-apps/api/prisma/dev.db-journal
-apps/api/src/generated/prisma/
+prisma/dev.db
+prisma/dev.db-journal
+src/generated/prisma/

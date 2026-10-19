@@ -9,12 +9,9 @@ import { uploadDirectory } from "../middlewares/image-upload.js";
 export async function generatePiperAudio(baseUrl: string, wordId: string, term: string, accent: "US" | "UK") {
   const piperPath = process.env.PIPER_PATH ?? "piper";
   const configuredModelPath = accent === "UK" ? process.env.PIPER_VOICE_MODEL_UK : process.env.PIPER_VOICE_MODEL_US;
-  const modelCandidates = configuredModelPath ? [
-    path.isAbsolute(configuredModelPath) ? configuredModelPath : path.resolve(process.cwd(), configuredModelPath),
-    path.isAbsolute(configuredModelPath) ? configuredModelPath : path.resolve(process.cwd(), "../..", configuredModelPath),
-  ] : [];
-  const modelPath = modelCandidates.find((candidate) => existsSync(candidate));
-  if (!modelPath) {
+  // A relative path is resolved from the folder the API is started in: the repository root.
+  const modelPath = configuredModelPath ? path.resolve(process.cwd(), configuredModelPath) : undefined;
+  if (!modelPath || !existsSync(modelPath)) {
     throw new Error(`No se encontró el modelo Piper configurado: ${configuredModelPath ?? "sin ruta"}`);
   }
 
