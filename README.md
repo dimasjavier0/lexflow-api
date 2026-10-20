@@ -4,7 +4,7 @@ API REST de LexFlow, la plataforma para aprender vocabulario de inglés mediante
 
 La web que la consume está en [lexflow-web](https://github.com/dimasjavier0/lexflow-web). Hasta la versión 0.6.0, ambas vivían en el monorepo [LexFlow-1.0](https://github.com/dimasjavier0/LexFlow-1.0).
 
-Versión actual: **1.0.0**. El historial por versiones está en [CHANGELOG.md](CHANGELOG.md) y en las [releases](https://github.com/dimasjavier0/lexflow-api/releases), y el flujo de trabajo del repositorio (ramas, commits y versiones), en [CLAUDE.md](CLAUDE.md).
+Versión actual: **1.1.0**. El historial por versiones está en [CHANGELOG.md](CHANGELOG.md) y en las [releases](https://github.com/dimasjavier0/lexflow-api/releases), y el flujo de trabajo del repositorio (ramas, commits y versiones), en [CLAUDE.md](CLAUDE.md).
 
 ## Estructura
 
