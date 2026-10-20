@@ -75,6 +75,7 @@ Todas en el `.env` de la raíz; la plantilla es [.env.example](.env.example).
 | ---------------------------------------------- | ------------------------------------------------------------------------------------- |
 | `DATABASE_URL`                                 | Conexión a PostgreSQL.                                                                |
 | `SUPABASE_URL`, `SUPABASE_JWT_SECRET`          | Validación del JWT de Supabase (JWKS con `SUPABASE_URL`; HS256 con el secreto si está vacía). |
+| `SUPABASE_SERVICE_ROLE_KEY`                    | Secreta: borra la cuenta de Supabase en `DELETE /me`. Sin ella, borrar la cuenta responde 503. |
 | `API_PORT`                                     | Puerto de la API (3000 por defecto).                                                  |
 | `CORS_ORIGINS`                                 | Orígenes web permitidos, separados por comas. Vacío = cualquiera (solo en local).     |
 | `PIXABAY_API_KEY`                              | Búsqueda y descarga de imágenes.                                                      |
@@ -88,6 +89,7 @@ Todas en el `.env` de la raíz; la plantilla es [.env.example](.env.example).
 - Validación del JWT de Supabase y sincronización de usuarios locales (Google y Facebook).
 - Colecciones y palabras publicadas, búsqueda con autocompletado y filtro por nivel CEFR. Los estudiantes solo ven palabras publicadas.
 - Progreso por palabra: querer aprender, no interesar y aprendida.
+- Borrado de la propia cuenta. Ver [Borrar la cuenta](#borrar-la-cuenta).
 - Repaso espaciado (SM-2), puntos, nivel y racha.
 - Clasificación diaria, semanal y mensual, con filtro por país. Ver [Clasificación](#clasificación).
 - Amigos de Facebook con las palabras aprendidas de cada uno. Ver [Facebook y amigos](#facebook-y-amigos).
@@ -158,7 +160,7 @@ El inicio de sesión con Facebook lo resuelve Supabase Auth en la web. La API gu
 5. En Supabase, **Authentication → URL Configuration**, añade la URL de la web (`http://localhost:5173/**` en local) a las Redirect URLs.
 6. En el `.env`, `FACEBOOK_APP_SECRET` con el mismo App Secret. Sin él, `POST /me/facebook` responde 503 y la web avisa de que Facebook no está configurado.
 
-Mientras Meta no apruebe `user_friends` en App Review, solo pueden conceder ese permiso las personas con un rol en la app (administradores, desarrolladores y testers). Para publicar la app, Facebook pide además una política de privacidad y una forma de solicitar el borrado de datos.
+Mientras Meta no apruebe `user_friends` en App Review, solo pueden conceder ese permiso las personas con un rol en la app (administradores, desarrolladores y testers). Para publicar la app, Facebook pide además una política de privacidad y una forma de solicitar el borrado de datos: en **App settings → Basic**, usa `https://<dominio-de-la-web>/privacy` como «Privacy Policy URL» y `https://<dominio-de-la-web>/delete-account` como «Data Deletion Instructions URL». Las dos páginas son públicas en la web.
 
 ### Cómo funciona
 
@@ -167,10 +169,19 @@ Mientras Meta no apruebe `user_friends` en App Review, solo pueden conceder ese 
 - La lista se actualiza cada vez que el usuario o alguno de sus amigos entra con Facebook: la lista nueva reemplaza todas las amistades de esa persona, así que dejar de ser amigos en Facebook se refleja en el siguiente inicio de sesión de cualquiera de los dos.
 - `GET /me/friends` responde `{ facebook: { connected, friendsGranted }, me, friends }`, donde cada persona es `{ id, name, avatarUrl, knownWords }`. Nunca incluye el correo de los amigos.
 
+## Borrar la cuenta
+
+`DELETE /me` borra la cuenta de quien hace la petición y responde 204. Lo exigen Google Play y Facebook, y la web lo ofrece en «Mi progreso».
+
+1. Borra el usuario de Supabase Auth con la API de administración (`SUPABASE_SERVICE_ROLE_KEY`), junto con sus identidades de Google y Facebook. Si Supabase falla, no se borra nada y responde 502; si el usuario ya no existe en Supabase, sigue adelante.
+2. Borra el usuario local; la base borra en cascada su progreso, sus puntos diarios y sus amistades en las dos direcciones.
+
+Sin `SUPABASE_SERVICE_ROLE_KEY` responde 503. Está limitada a 5 peticiones por minuto. Las imágenes y audios de `uploads/` no se tocan: pertenecen a las palabras, no a los estudiantes.
+
 ## Seguridad
 
 - `CORS_ORIGINS` limita los orígenes web permitidos (lista separada por comas). Si está vacío se acepta cualquier origen, lo que solo es adecuado en desarrollo local.
-- La API limita cada IP a 300 peticiones por minuto, a 30 por minuto en las rutas que llaman a Pixabay o ejecutan Piper (búsqueda, reparación y acciones sobre varias palabras incluidas) y a 10 por minuto en `POST /me/facebook`, que lee la lista de amigos de Facebook. El contador vive en memoria: con más de una instancia hará falta un almacén compartido.
+- La API limita cada IP a 300 peticiones por minuto, a 30 por minuto en las rutas que llaman a Pixabay o ejecutan Piper (búsqueda, reparación y acciones sobre varias palabras incluidas), a 10 por minuto en `POST /me/facebook`, que lee la lista de amigos de Facebook, y a 5 por minuto en `DELETE /me`. El contador vive en memoria: con más de una instancia hará falta un almacén compartido.
 
 ## Pronunciación local
 
