@@ -9,6 +9,10 @@ Hasta la 0.6.0, la API y la web vivían juntas en el monorepo [LexFlow-1.0](http
 
 ## [Unreleased]
 
+### Added
+
+- Cada estudiante puede borrar su cuenta (`DELETE /me`): se borra su inicio de sesión en Supabase, con sus identidades de Google y Facebook, y después su perfil, su progreso, sus puntos y sus amistades. Necesita la nueva variable `SUPABASE_SERVICE_ROLE_KEY`; sin ella responde 503.
+
 ## [1.0.0] - 2026-10-19
 
 Primera versión como repositorio propio, lista para desplegarse por separado de la web. Incluye todo lo publicado hasta la 0.6.0: colecciones y palabras con imágenes, audio y video; progreso por palabra; repaso espaciado SM-2 con puntos, niveles y racha; panel admin con Pixabay, Piper y buscadores de videos y grabaciones; y autenticación con Supabase.

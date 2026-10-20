@@ -4,6 +4,7 @@ import { prisma } from "../db/prisma.js";
 import { isCountryCode } from "../lib/countries.js";
 import { currentStreak, levelProgress } from "../services/gamification.js";
 import { providerProfile, providerProfilePatch } from "../services/provider-profile.js";
+import { deleteAuthUser, SupabaseAdminError, supabaseServiceKey } from "../services/supabase-admin.js";
 import { REVIEW_LEVELS, reviewLevel, upcomingReviews } from "../services/srs.js";
 import { countDueReviews, reviewableWhere } from "./review.controller.js";
 
@@ -82,6 +83,34 @@ export async function updateMe(request: Request, response: Response): Promise<vo
 
   const user = await prisma.user.update({ where: { id: authUser.id }, data: parsed.data, select: profileSelect });
   response.status(200).json({ user: toProfile(user) });
+}
+
+/**
+ * Deletes the learner's account for good: first the Supabase sign-in, so they cannot come back
+ * and be recreated half-way, then the local user, whose progress, daily points and friendships
+ * go with it (cascade).
+ */
+export async function deleteMe(request: Request, response: Response): Promise<void> {
+  const authUser = request.authUser;
+  if (!authUser) {
+    response.status(401).json({ message: "Authentication required" });
+    return;
+  }
+  const serviceKey = supabaseServiceKey();
+  if (!serviceKey) {
+    response.status(503).json({ message: "Account deletion is not configured" });
+    return;
+  }
+
+  try {
+    await deleteAuthUser(authUser.id, serviceKey);
+  } catch (error) {
+    if (!(error instanceof SupabaseAdminError)) throw error;
+    response.status(502).json({ message: "The account could not be deleted, try again later" });
+    return;
+  }
+  await prisma.user.deleteMany({ where: { id: authUser.id } });
+  response.status(204).end();
 }
 
 const dashboardQuerySchema = z.object({

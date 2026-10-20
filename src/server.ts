@@ -5,7 +5,7 @@ import { getCollection, listCollections, searchWords } from "./controllers/colle
 import { connectFacebook, listFriends } from "./controllers/friends.controller.js";
 import { getHealth } from "./controllers/health.controller.js";
 import { getLeaderboard } from "./controllers/leaderboard.controller.js";
-import { getMe, getMyDashboard, updateMe } from "./controllers/me.controller.js";
+import { deleteMe, getMe, getMyDashboard, updateMe } from "./controllers/me.controller.js";
 import { listProgress, summarizeProgress, updateProgress } from "./controllers/progress.controller.js";
 import { listDueReviews, submitReview } from "./controllers/review.controller.js";
 import { errorHandler } from "./middlewares/error-handler.js";
@@ -30,6 +30,7 @@ app.get("/collections/:slug", getCollection);
 app.get("/words/search", searchWords);
 app.get("/me", requireAuth, getMe);
 app.patch("/me", requireAuth, updateMe);
+app.delete("/me", rateLimit({ windowMs: 60_000, max: 5 }), requireAuth, deleteMe);
 app.get("/me/dashboard", requireAuth, getMyDashboard);
 app.get("/me/friends", requireAuth, listFriends);
 // Each call reads the friend list from Facebook, up to 50 pages.
