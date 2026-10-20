@@ -9,6 +9,8 @@ Hasta la 0.6.0, la API y la web vivían juntas en el monorepo [LexFlow-1.0](http
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-20
+
 ### Added
 
 - Cada estudiante puede borrar su cuenta (`DELETE /me`): se borra su inicio de sesión en Supabase, con sus identidades de Google y Facebook, y después su perfil, su progreso, sus puntos y sus amistades. Necesita la nueva variable `SUPABASE_SERVICE_ROLE_KEY`; sin ella responde 503.
@@ -120,6 +122,7 @@ Primera versión como repositorio propio, lista para desplegarse por separado de
 - Datos: UUID, relación muchos-a-muchos entre colecciones y palabras, traducción española única e `isPublished`.
 - Prisma ORM 7: ESM, `prisma.config.ts`, cliente generado localmente y adaptador PostgreSQL; el `.env` de la raíz se carga con ruta absoluta.
 
-[Unreleased]: https://github.com/dimasjavier0/lexflow-api/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/dimasjavier0/lexflow-api/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/dimasjavier0/lexflow-api/releases/tag/v1.1.0
 [1.0.0]: https://github.com/dimasjavier0/lexflow-api/releases/tag/v1.0.0
 [0.6.0]: https://github.com/dimasjavier0/lexflow-api/releases/tag/v0.6.0
