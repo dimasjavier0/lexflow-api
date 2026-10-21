@@ -19,7 +19,7 @@ src/
   db/prisma.ts    Cliente de Prisma
 prisma/           Schema, migraciones y seed
 docker/           PostgreSQL local
-docs/             Modelo de datos
+docs/             Modelo de datos y despliegue en AWS
 uploads/          Imágenes y audios guardados (local, no versionado)
 models/piper/     Voces de Piper (local, no versionado)
 ```
@@ -83,6 +83,10 @@ Todas en el `.env` de la raíz; la plantilla es [.env.example](.env.example).
 | `PEXELS_API_KEY`, `YOUTUBE_API_KEY`            | Opcionales: fuentes extra del buscador de videos.                                     |
 | `WIKIMEDIA_USER_AGENT`                         | Opcional: identifica la app ante Wikimedia.                                           |
 | `PIPER_PATH`, `PIPER_VOICE_MODEL_US`, `PIPER_VOICE_MODEL_UK` | Pronunciación con Piper. Las rutas relativas parten de la raíz del repo. |
+
+## Despliegue
+
+En producción la API corre en AWS Lambda detrás de CloudFront, con los archivos en S3 y PostgreSQL y Auth en Supabase. La arquitectura, los costes, la seguridad y los pasos están en [docs/aws-deployment.md](docs/aws-deployment.md).
 
 ## Funcionalidades
 
