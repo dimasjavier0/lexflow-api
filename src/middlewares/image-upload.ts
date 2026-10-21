@@ -1,23 +1,16 @@
-import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import multer from "multer";
 
-export const uploadDirectory = fileURLToPath(new URL("../../uploads", import.meta.url));
-fs.mkdirSync(uploadDirectory, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: uploadDirectory,
-  filename: (_request, file, callback) => {
-    const extension = path.extname(file.originalname).toLowerCase();
-    callback(null, `${Date.now()}-${Math.random().toString(36).slice(2)}${extension}`);
-  },
-});
-
+/** Kept in memory: the controller hands the bytes to the file store (disk or S3). */
 export const imageUpload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (_request, file, callback) => {
     callback(null, file.mimetype.startsWith("image/"));
   },
 });
+
+export function uploadedImageFilename(originalName: string): string {
+  const extension = path.extname(originalName).toLowerCase().replace(/[^.a-z0-9]/g, "");
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}${extension}`;
+}

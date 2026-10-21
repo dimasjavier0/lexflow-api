@@ -83,6 +83,7 @@ Todas en el `.env` de la raíz; la plantilla es [.env.example](.env.example).
 | `PEXELS_API_KEY`, `YOUTUBE_API_KEY`            | Opcionales: fuentes extra del buscador de videos.                                     |
 | `WIKIMEDIA_USER_AGENT`                         | Opcional: identifica la app ante Wikimedia.                                           |
 | `PIPER_PATH`, `PIPER_VOICE_MODEL_US`, `PIPER_VOICE_MODEL_UK` | Pronunciación con Piper. Las rutas relativas parten de la raíz del repo. |
+| `MEDIA_BUCKET`, `PUBLIC_BASE_URL`, `TRUST_PROXY_HOPS`, `ORIGIN_VERIFY_SECRET`, `SSM_SECRETS_PATH`, `DATABASE_POOL_MAX` | Solo en producción; los define la infraestructura. Ver [docs/aws-deployment.md](docs/aws-deployment.md). |
 
 ## Despliegue
 
@@ -106,7 +107,7 @@ En producción la API corre en AWS Lambda detrás de CloudFront, con los archivo
   - Buscador de videos (YouGlish, Pixabay, Pexels, Dailymotion, Wikimedia y YouTube) y de grabaciones de la pronunciación.
   - Pronunciación generada con Piper TTS.
 
-Las imágenes subidas, las descargadas de Pixabay y los audios generados se guardan en `uploads/` y la API los sirve en `/uploads/...`; su URL queda registrada en PostgreSQL. La carpeta no se versiona. Este almacenamiento está pensado para desarrollo local; en producción deberá pasar a un bucket S3 o compatible.
+Las imágenes subidas, las descargadas de Pixabay y los audios generados se guardan en `uploads/` y la API los sirve en `/uploads/...`; su URL queda registrada en PostgreSQL. La carpeta no se versiona. En producción (`MEDIA_BUCKET`) van a un bucket S3 bajo el prefijo `uploads/`, que CloudFront sirve en la misma ruta.
 
 ## Imágenes de Pixabay
 

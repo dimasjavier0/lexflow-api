@@ -9,10 +9,11 @@ import { deleteMe, getMe, getMyDashboard, updateMe } from "./controllers/me.cont
 import { listProgress, summarizeProgress, updateProgress } from "./controllers/progress.controller.js";
 import { listDueReviews, submitReview } from "./controllers/review.controller.js";
 import { errorHandler } from "./middlewares/error-handler.js";
-import { uploadDirectory } from "./middlewares/image-upload.js";
 import { rateLimit } from "./middlewares/rate-limit.js";
 import { requireAuth } from "./middlewares/require-auth.js";
+import { requireOrigin } from "./middlewares/require-origin.js";
 import { adminRouter } from "./routes/admin.routes.js";
+import { localUploadDirectory, servesUploadsLocally } from "./services/file-store.js";
 
 const app = express();
 const port = Number(process.env.API_PORT ?? 3000);
@@ -20,10 +21,18 @@ const port = Number(process.env.API_PORT ?? 3000);
 // Comma-separated list of allowed web origins. Unset (local development) allows any origin.
 const corsOrigins = (process.env.CORS_ORIGINS ?? "").split(",").map((origin) => origin.trim()).filter(Boolean);
 
+// Behind CloudFront and the Lambda Function URL, the client's IP is this many proxies back.
+// Without it every request would share one rate-limit window.
+const trustedProxyHops = Number(process.env.TRUST_PROXY_HOPS ?? 0);
+if (trustedProxyHops > 0) app.set("trust proxy", trustedProxyHops);
+
 app.use(cors(corsOrigins.length ? { origin: corsOrigins } : undefined));
 app.use(express.json());
-app.use("/uploads", express.static(uploadDirectory));
+// The Lambda Web Adapter checks /health directly, without going through CloudFront.
 app.get("/health", getHealth);
+app.use(requireOrigin());
+// In production CloudFront serves /uploads from S3.
+if (servesUploadsLocally) app.use("/uploads", express.static(localUploadDirectory));
 app.use(rateLimit({ windowMs: 60_000, max: 300 }));
 app.get("/collections", listCollections);
 app.get("/collections/:slug", getCollection);

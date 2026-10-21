@@ -10,6 +10,8 @@ import { normalizeTerm } from "../lib/text.js";
 import { isUuid } from "../lib/validation.js";
 import { EXPIRING_PIXABAY_URL_PREFIX, isExpiringPixabayUrl, removeStoredFile, storeRemoteImage } from "../services/image-store.js";
 import { generatePiperAudio } from "../services/piper.js";
+import { saveUpload, uploadUrl } from "../services/file-store.js";
+import { uploadedImageFilename } from "../middlewares/image-upload.js";
 import { findPixabayImageById, findPixabayImages, searchPixabay, type PixabayImage } from "../services/pixabay.js";
 import { findRecordedAudios } from "../services/recorded-audio.js";
 import { searchVideos, VIDEO_PROVIDERS } from "../services/video-sources/index.js";
@@ -941,10 +943,12 @@ export async function uploadAdminImage(request: Request, response: Response): Pr
     return;
   }
 
+  const filename = uploadedImageFilename(request.file.originalname);
+  await saveUpload(filename, request.file.buffer, request.file.mimetype);
   const image = await prisma.image.create({
     data: {
       wordId,
-      url: `${publicBaseUrl(request)}/uploads/${request.file.filename}`,
+      url: uploadUrl(publicBaseUrl(request), filename),
       source: "local-upload",
       metadata: { originalName: request.file.originalname, mimeType: request.file.mimetype },
     },

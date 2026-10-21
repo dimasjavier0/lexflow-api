@@ -9,6 +9,14 @@ Hasta la 0.6.0, la API y la web vivían juntas en el monorepo [LexFlow-1.0](http
 
 ## [Unreleased]
 
+### Added
+
+- La API puede correr en AWS Lambda: imagen de contenedor (`Dockerfile`) con Piper para Linux y sus dos voces, imágenes y audios en S3 (`MEDIA_BUCKET`), URL públicas desde `PUBLIC_BASE_URL`, secretos leídos de SSM Parameter Store al arrancar y rechazo de las peticiones que no llegan por CloudFront (`ORIGIN_VERIFY_SECRET`).
+
+### Fixed
+
+- `npm run build` y `npm start` no arrancaban: el cliente generado de Prisma importaba sus módulos sin la extensión `.js` que necesita Node.
+
 ## [1.1.0] - 2026-10-20
 
 ### Added
