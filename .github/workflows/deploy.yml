@@ -1,0 +1,64 @@
+# Checks every push and pull request; on main also applies the database migrations and
+# deploys the infrastructure and the API (docs/aws-deployment.md, step 8). AWS access is a
+# short-lived role assumed through GitHub's OIDC token: there are no access keys.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npx prisma generate
+        env: { DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci" }
+      - run: npm run check
+      - run: npm ci && npm run check
+        working-directory: infra
+
+  deploy:
+    needs: check
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      # Optional: the session pooler URL of the production database. Without it, run
+      # `prisma migrate deploy` by hand before merging a migration.
+      MIGRATION_DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: 22, cache: npm }
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+          mask-aws-account-id: true
+      - name: Apply database migrations
+        if: env.MIGRATION_DATABASE_URL != ''
+        run: npm ci && DATABASE_URL="$MIGRATION_DATABASE_URL" npx prisma migrate deploy
+      - name: Deploy infrastructure and API
+        working-directory: infra
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+        run: |
+          npm ci
+          npx cdk deploy --require-approval never --progress events

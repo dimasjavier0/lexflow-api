@@ -19,6 +19,7 @@ src/
   db/prisma.ts    Cliente de Prisma
 prisma/           Schema, migraciones y seed
 docker/           PostgreSQL local
+infra/            Infraestructura de AWS (CDK en TypeScript) y script de migración de datos
 docs/             Modelo de datos y despliegue en AWS
 uploads/          Imágenes y audios guardados (local, no versionado)
 models/piper/     Voces de Piper (local, no versionado)
@@ -77,7 +78,7 @@ Todas en el `.env` de la raíz; la plantilla es [.env.example](.env.example).
 | `SUPABASE_URL`, `SUPABASE_JWT_SECRET`          | Validación del JWT de Supabase (JWKS con `SUPABASE_URL`; HS256 con el secreto si está vacía). |
 | `SUPABASE_SERVICE_ROLE_KEY`                    | Secreta: borra la cuenta de Supabase en `DELETE /me`. Sin ella, borrar la cuenta responde 503. |
 | `API_PORT`                                     | Puerto de la API (3000 por defecto).                                                  |
-| `CORS_ORIGINS`                                 | Orígenes web permitidos, separados por comas. Vacío = cualquiera (solo en local).     |
+| `CORS_ORIGINS`                                 | Orígenes web permitidos, separados por comas. Vacío = cualquiera (solo en local); `none` = ninguno (producción, mismo dominio). |
 | `PIXABAY_API_KEY`                              | Búsqueda y descarga de imágenes.                                                      |
 | `FACEBOOK_APP_SECRET`                          | Lectura de la lista de amigos de Facebook.                                            |
 | `PEXELS_API_KEY`, `YOUTUBE_API_KEY`            | Opcionales: fuentes extra del buscador de videos.                                     |
@@ -185,7 +186,7 @@ Sin `SUPABASE_SERVICE_ROLE_KEY` responde 503. Está limitada a 5 peticiones por 
 
 ## Seguridad
 
-- `CORS_ORIGINS` limita los orígenes web permitidos (lista separada por comas). Si está vacío se acepta cualquier origen, lo que solo es adecuado en desarrollo local.
+- `CORS_ORIGINS` limita los orígenes web permitidos (lista separada por comas). Si está vacío se acepta cualquier origen, lo que solo es adecuado en desarrollo local; con `none` no se acepta ningún otro origen, como en producción, donde la web y la API comparten el dominio de CloudFront.
 - La API limita cada IP a 300 peticiones por minuto, a 30 por minuto en las rutas que llaman a Pixabay o ejecutan Piper (búsqueda, reparación y acciones sobre varias palabras incluidas), a 10 por minuto en `POST /me/facebook`, que lee la lista de amigos de Facebook, y a 5 por minuto en `DELETE /me`. El contador vive en memoria: con más de una instancia hará falta un almacén compartido.
 
 ## Pronunciación local

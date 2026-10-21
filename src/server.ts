@@ -18,15 +18,17 @@ import { localUploadDirectory, servesUploadsLocally } from "./services/file-stor
 const app = express();
 const port = Number(process.env.API_PORT ?? 3000);
 
-// Comma-separated list of allowed web origins. Unset (local development) allows any origin.
-const corsOrigins = (process.env.CORS_ORIGINS ?? "").split(",").map((origin) => origin.trim()).filter(Boolean);
+// Comma-separated list of allowed web origins. Unset (local development) allows any origin;
+// "none" allows no other origin, for when the web is served from the API's own domain.
+const corsSetting = process.env.CORS_ORIGINS?.trim() ?? "";
+const corsOrigins = corsSetting.split(",").map((origin) => origin.trim()).filter(Boolean);
 
 // Behind CloudFront and the Lambda Function URL, the client's IP is this many proxies back.
 // Without it every request would share one rate-limit window.
 const trustedProxyHops = Number(process.env.TRUST_PROXY_HOPS ?? 0);
 if (trustedProxyHops > 0) app.set("trust proxy", trustedProxyHops);
 
-app.use(cors(corsOrigins.length ? { origin: corsOrigins } : undefined));
+if (corsSetting !== "none") app.use(cors(corsOrigins.length ? { origin: corsOrigins } : undefined));
 app.use(express.json());
 // The Lambda Web Adapter checks /health directly, without going through CloudFront.
 app.get("/health", getHealth);
