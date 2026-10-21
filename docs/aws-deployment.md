@@ -148,16 +148,27 @@ npx cdk bootstrap
 
 ### 4. Cargar los secretos
 
-Con valores escritos a mano en la terminal, nunca en archivos del repositorio:
+Cada secreto se guarda con `infra/scripts/set-secret.ps1`, que lo pide sin mostrarlo en pantalla ni dejarlo en el historial:
+
+```powershell
+.\infra\scripts\set-secret.ps1 DATABASE_URL               # pooler de Supabase en modo transacción (6543)
+.\infra\scripts\set-secret.ps1 SUPABASE_SERVICE_ROLE_KEY  # para «Eliminar mi cuenta»
+.\infra\scripts\set-secret.ps1 SUPABASE_JWT_SECRET        # solo proyectos que aún firman con HS256
+.\infra\scripts\set-secret.ps1 PIXABAY_API_KEY
+.\infra\scripts\set-secret.ps1 FACEBOOK_APP_SECRET        # opcional: amigos de Facebook
+.\infra\scripts\set-secret.ps1 PEXELS_API_KEY             # opcional
+.\infra\scripts\set-secret.ps1 YOUTUBE_API_KEY            # opcional
+```
+
+`DATABASE_URL` es la cadena del *Transaction pooler* de Supabase (botón **Connect** del proyecto) con la contraseña de la base y, al final, `?sslmode=require&uselibpqcompat=true`: cifra la conexión como lo hace `libpq`, sin exigir la CA propia de Supabase.
+
+El secreto que CloudFront envía a la API se genera aleatorio y nunca se escribe a mano:
 
 ```bash
-aws ssm put-parameter --type SecureString --name /lexflow/prod/DATABASE_URL --value '<cadena-del-pooler-6543>'
-aws ssm put-parameter --type SecureString --name /lexflow/prod/SUPABASE_SERVICE_ROLE_KEY --value '<clave>'
-# Igual para FACEBOOK_APP_SECRET, PIXABAY_API_KEY, PEXELS_API_KEY y YOUTUBE_API_KEY.
 aws ssm put-parameter --type String --name /lexflow/prod/ORIGIN_VERIFY_SECRET --value "$(openssl rand -hex 32)"
 ```
 
-Para rotar un secreto: `put-parameter ... --overwrite` y forzar un arranque nuevo de la Lambda (otro despliegue, o cambiar su descripción).
+Para rotar un secreto: volver a ejecutar el script (sobrescribe) y forzar un arranque nuevo de la Lambda (otro despliegue). En Git Bash, los comandos `aws` con rutas `/lexflow/...` necesitan `MSYS_NO_PATHCONV=1`, porque Git Bash las convierte en rutas de Windows.
 
 ### 5. Desplegar la infraestructura
 
