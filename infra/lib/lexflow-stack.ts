@@ -73,7 +73,8 @@ export class LexflowStack extends Stack {
     mediaBucket.grantReadWrite(api);
     api.addToRolePolicy(new iam.PolicyStatement({
       actions: ["ssm:GetParametersByPath"],
-      resources: [this.formatArn({ service: "ssm", resource: "parameter", resourceName: SECRETS_PATH.replace(/^\/|\/$/g, "") })],
+      // The path itself, with or without the trailing slash: GetParametersByPath is authorized against it.
+      resources: [this.formatArn({ service: "ssm", resource: "parameter", resourceName: `${SECRETS_PATH.replace(/^\/|\/$/g, "")}*` })],
     }));
     api.addToRolePolicy(new iam.PolicyStatement({
       actions: ["kms:Decrypt"],

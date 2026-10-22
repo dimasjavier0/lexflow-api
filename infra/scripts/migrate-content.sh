@@ -27,10 +27,19 @@ echo "Exporting ${#CONTENT_TABLES[@]} content tables from $LOCAL_CONTAINER..."
 docker exec "$LOCAL_CONTAINER" pg_dump -U lexflow -d lexflow --data-only --no-owner --no-privileges "${table_args[@]}" > "$dump"
 
 # psql runs in a throwaway container, so nothing needs installing; the URL travels as an
-# environment variable, never on the command line or in a file.
+# environment variables, never on the command line or in a file. Node (the API's own URL
+# parser) splits the URL into libpq's PG* variables: libpq reads some password characters in
+# a URL differently, and rejects the Node-only uselibpqcompat parameter.
+eval "$(node -e '
+  const u = new URL(process.env.TARGET_DATABASE_URL);
+  const q = (s) => "\x27" + s.replace(/\x27/g, "\x27\\\x27\x27") + "\x27";
+  const vars = { PGHOST: u.hostname, PGPORT: u.port || "5432", PGUSER: decodeURIComponent(u.username), PGPASSWORD: decodeURIComponent(u.password),
+    PGDATABASE: decodeURIComponent(u.pathname.slice(1)) || "postgres", PGSSLMODE: u.searchParams.get("sslmode") || "require" };
+  for (const [k, v] of Object.entries(vars)) console.log("export " + k + "=" + q(v));
+')"
 psql_target() {
-  docker run --rm -i -e TARGET_DATABASE_URL public.ecr.aws/docker/library/postgres:17-alpine \
-    sh -c 'psql "$TARGET_DATABASE_URL" -v ON_ERROR_STOP=1 -q "$@"' psql "$@"
+  docker run --rm -i -e PGHOST -e PGPORT -e PGUSER -e PGPASSWORD -e PGDATABASE -e PGSSLMODE \
+    public.ecr.aws/docker/library/postgres:17-alpine psql -v ON_ERROR_STOP=1 -q "$@"
 }
 
 echo "Importing into the target database (one transaction)..."
