@@ -1,0 +1,9 @@
+# Only what the Dockerfile copies; never secrets or local data.
+*
+!package.json
+!package-lock.json
+!tsconfig.json
+!prisma.config.ts
+!prisma/
+!src/
+src/generated/

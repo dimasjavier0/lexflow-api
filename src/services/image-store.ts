@@ -1,6 +1,5 @@
-import fs from "node:fs/promises";
 import path from "node:path";
-import { uploadDirectory } from "../middlewares/image-upload.js";
+import { deleteUpload, saveUpload, uploadUrl } from "./file-store.js";
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 
@@ -18,7 +17,7 @@ export function isExpiringPixabayUrl(url: string): boolean {
   return url.startsWith(EXPIRING_PIXABAY_URL_PREFIX);
 }
 
-/** Downloads an image into the uploads directory and returns its public URL, or null when it cannot be fetched. */
+/** Downloads an image into the file store and returns its public URL, or null when it cannot be fetched. */
 export async function storeRemoteImage(baseUrl: string, remoteUrl: string): Promise<string | null> {
   try {
     const response = await fetch(remoteUrl, { signal: AbortSignal.timeout(20_000) });
@@ -30,8 +29,8 @@ export async function storeRemoteImage(baseUrl: string, remoteUrl: string): Prom
     if (data.length === 0 || data.length > MAX_IMAGE_BYTES) return null;
 
     const filename = `image-${Date.now()}-${Math.random().toString(36).slice(2)}${extension}`;
-    await fs.writeFile(path.join(uploadDirectory, filename), data);
-    return `${baseUrl}/uploads/${filename}`;
+    await saveUpload(filename, data, contentType);
+    return uploadUrl(baseUrl, filename);
   } catch {
     return null;
   }
@@ -46,5 +45,5 @@ export async function removeStoredFile(url: string): Promise<void> {
     return;
   }
   if (!pathname.startsWith("/uploads/")) return;
-  await fs.rm(path.join(uploadDirectory, path.basename(pathname)), { force: true });
+  await deleteUpload(path.basename(pathname));
 }

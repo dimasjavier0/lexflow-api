@@ -1,0 +1,5 @@
+{
+  "app": "npx tsx bin/lexflow.ts",
+  "watch": { "include": ["bin/**", "lib/**"] },
+  "context": {}
+}

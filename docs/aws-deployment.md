@@ -22,7 +22,7 @@ flowchart LR
     media[(S3 · media<br/>privado)]
     fn[Lambda · API Express<br/>imagen de contenedor con Piper]
     ssm[[SSM Parameter Store<br/>secretos cifrados]]
-    ping[EventBridge Scheduler<br/>+ Lambda keep-alive]
+    ping[EventBridge regla diaria<br/>+ Lambda keep-alive]
     budget[[AWS Budgets<br/>+ alarma de errores]]
   end
   subgraph Supabase
@@ -39,7 +39,6 @@ flowchart LR
   fn -- valida JWT --> auth
   user -- login OAuth --> auth
   ping -. diario .-> cf
-  ping -. diario .-> auth
 ```
 
 Todo se sirve desde un único dominio de CloudFront, así que la web llama a la API con rutas relativas (`/api/...`) y no hace falta CORS entre orígenes.
@@ -48,7 +47,7 @@ Todo se sirve desde un único dominio de CloudFront, así que la web llama a la 
 | ------------------ | ---------------------------- | --------------------------------------- |
 | `/*` (por defecto) | Bucket `web`, con OAC        | `assets/*` un año; `index.html`, `sw.js` y el manifest sin caché |
 | `/uploads/*`       | Bucket `media`, con OAC      | Larga: cada archivo tiene un nombre único |
-| `/api/*`           | Function URL de la Lambda    | Desactivada; una CloudFront Function quita el prefijo `/api` |
+| `/api/*`           | Function URL de la Lambda    | Desactivada; una CloudFront Function quita el prefijo `/api` y añade `x-public-origin` |
 
 Las rutas de la SPA (`/profile`, `/learn/...`) las resuelve otra CloudFront Function que sirve `index.html` cuando la ruta no tiene extensión.
 
@@ -63,7 +62,7 @@ Las rutas de la SPA (`/profile`, `/learn/...`) las resuelve otra CloudFront Func
 | **Function URL** (respuesta en *streaming*) | Puerta de la Lambda para CloudFront | Gratis, a diferencia de API Gateway tras su primer año. El *streaming* mantiene vivas las barras de progreso NDJSON del panel admin. | $0 |
 | **ECR** (repositorio de assets de CDK) | Imagen de la Lambda | El que crea `cdk bootstrap`. `cdk gc` borra imágenes viejas. | ~$0.05/mes |
 | **SSM Parameter Store** (SecureString, nivel estándar) | Secretos de la API | Gratis con la clave de KMS administrada por AWS. Secrets Manager cuesta $0.40 por secreto al mes. | $0 |
-| **EventBridge Scheduler + Lambda keep-alive** | Una visita diaria a la API y a Supabase | Supabase pausa los proyectos gratuitos tras 7 días sin actividad. | $0 |
+| **Regla diaria de EventBridge + Lambda keep-alive** | Una petición diaria a `/api/collections`, que consulta la base | Supabase pausa los proyectos gratuitos tras 7 días sin actividad. | $0 |
 | **CloudWatch Logs** (retención 14 días) + **1 alarma** de errores con **SNS** por correo | Diagnóstico y aviso | Dentro de la capa gratuita permanente (5 GB de logs, 10 alarmas, 1000 correos). | $0 |
 | **AWS Budgets** | Aviso por correo si el gasto previsto pasa de $1 al mes | Los dos primeros presupuestos son gratis. | $0 |
 | **IAM**: proveedor OIDC de GitHub y roles de despliegue | GitHub Actions despliega sin claves de acceso | Credenciales temporales por ejecución, limitadas a la rama `main` de cada repositorio. | $0 |
@@ -81,12 +80,14 @@ Las rutas de la SPA (`/profile`, `/learn/...`) las resuelve otra CloudFront Func
 
 ## Seguridad
 
-- **Secretos**: `DATABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `FACEBOOK_APP_SECRET`, `PIXABAY_API_KEY`, `PEXELS_API_KEY`, `YOUTUBE_API_KEY` y `ORIGIN_VERIFY_SECRET` son parámetros *SecureString* bajo `/lexflow/prod/`. La Lambda los lee al arrancar (`GetParametersByPath` con descifrado) y solo tiene permiso sobre esa ruta. Nunca están en el repositorio, en variables de entorno de la Lambda ni en la plantilla de CloudFormation. Se cargan a mano con `aws ssm put-parameter` (ver [Paso 4](#4-cargar-los-secretos)).
+- **Secretos**: `DATABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `FACEBOOK_APP_SECRET`, `PIXABAY_API_KEY`, `PEXELS_API_KEY` y `YOUTUBE_API_KEY` son parámetros *SecureString* bajo `/lexflow/prod/`. La Lambda los lee al arrancar (`GetParametersByPath` con descifrado, `src/lib/load-secrets.ts`) y solo tiene permiso sobre esa ruta. Nunca están en el repositorio, en variables de entorno de la Lambda ni en la plantilla de CloudFormation. Se cargan a mano con `aws ssm put-parameter` (ver [Paso 4](#4-cargar-los-secretos)).
+- **`ORIGIN_VERIFY_SECRET`** vive en la misma ruta pero como parámetro *String*: CloudFormation tiene que leerlo para configurar la cabecera de CloudFront, y no admite *SecureString* ahí. Es un valor aleatorio sin otro uso, visible solo para quien tenga acceso a la cuenta.
 - **Configuración no secreta** (URL de Supabase, nombre del bucket, URL pública): variables de entorno de la Lambda, definidas en CDK.
 - **Buckets privados**: *Block Public Access* activado, cifrado SSE-S3, solo TLS, lectura únicamente desde CloudFront con *Origin Access Control*.
 - **La API solo responde a CloudFront**: CloudFront añade la cabecera `x-origin-verify` con un valor aleatorio que también conoce la API (`ORIGIN_VERIFY_SECRET`); las peticiones directas a la Function URL sin ella reciben 403.
 - **IP real del cliente**: Express confía en los saltos de CloudFront y Function URL (`TRUST_PROXY_HOPS`), así el límite de peticiones por IP sigue funcionando.
-- **CORS** limitado al dominio de CloudFront (`CORS_ORIGINS`).
+- **CORS** cerrado (`CORS_ORIGINS=none`): la web y la API comparten dominio, así que ningún otro origen necesita acceso.
+- **URL de los archivos**: la Lambda no conoce el dominio de CloudFront al crearse (sería una dependencia circular), así que la CloudFront Function de `/api/*` lo envía en `x-public-origin`. La API solo se fía de esa cabecera cuando `x-origin-verify` es correcta.
 - **Cabeceras de seguridad** en CloudFront: HSTS, `X-Content-Type-Options`, `Referrer-Policy` y `X-Frame-Options`.
 - **Despliegue sin claves**: GitHub Actions asume roles por OIDC. El ARN del rol se guarda como *secret* del repositorio, así el identificador de la cuenta no aparece en el código ni en los logs públicos.
 - **Cuenta**: el trabajo diario se hace con un usuario con MFA, no con el usuario raíz. El raíz también tiene MFA.
@@ -109,7 +110,9 @@ Las rutas de la SPA (`/profile`, `/learn/...`) las resuelve otra CloudFront Func
 
 - **API**:
   - Almacén de archivos con dos implementaciones: disco local en desarrollo y S3 cuando existe `MEDIA_BUCKET`.
-  - `PUBLIC_BASE_URL`, `TRUST_PROXY_HOPS` y la comprobación de `x-origin-verify`.
+  - `x-public-origin` (o `PUBLIC_BASE_URL`), `TRUST_PROXY_HOPS`, `CORS_ORIGINS=none` y la comprobación de `x-origin-verify`.
+  - `prisma.config.ts` deja que un `DATABASE_URL` puesto en la terminal gane al de `.env`, para que las migraciones lleguen a producción.
+  - El cliente de Prisma se genera con imports `.js`, que necesita Node al ejecutar el build compilado.
   - Cargador de secretos desde SSM.
   - `Dockerfile` para Lambda con Piper para Linux y las dos voces en uso.
 - **Web**: `VITE_API_URL=/api`. Nada más.
@@ -145,32 +148,43 @@ npx cdk bootstrap
 
 ### 4. Cargar los secretos
 
-Con valores escritos a mano en la terminal, nunca en archivos del repositorio:
+Cada secreto se guarda con `infra/scripts/set-secret.ps1`, que lo pide sin mostrarlo en pantalla ni dejarlo en el historial:
 
-```bash
-aws ssm put-parameter --type SecureString --name /lexflow/prod/DATABASE_URL --value '<cadena-del-pooler-6543>'
-aws ssm put-parameter --type SecureString --name /lexflow/prod/SUPABASE_SERVICE_ROLE_KEY --value '<clave>'
-# Igual para FACEBOOK_APP_SECRET, PIXABAY_API_KEY, PEXELS_API_KEY y YOUTUBE_API_KEY.
-aws ssm put-parameter --type SecureString --name /lexflow/prod/ORIGIN_VERIFY_SECRET --value "$(openssl rand -hex 32)"
+```powershell
+.\infra\scripts\set-secret.ps1 DATABASE_URL               # pooler de Supabase en modo transacción (6543)
+.\infra\scripts\set-secret.ps1 SUPABASE_SERVICE_ROLE_KEY  # para «Eliminar mi cuenta»
+.\infra\scripts\set-secret.ps1 SUPABASE_JWT_SECRET        # solo proyectos que aún firman con HS256
+.\infra\scripts\set-secret.ps1 PIXABAY_API_KEY
+.\infra\scripts\set-secret.ps1 FACEBOOK_APP_SECRET        # opcional: amigos de Facebook
+.\infra\scripts\set-secret.ps1 PEXELS_API_KEY             # opcional
+.\infra\scripts\set-secret.ps1 YOUTUBE_API_KEY            # opcional
 ```
 
-Para rotar un secreto: `put-parameter ... --overwrite` y forzar un arranque nuevo de la Lambda (otro despliegue, o cambiar su descripción).
+`DATABASE_URL` es la cadena del *Transaction pooler* de Supabase (botón **Connect** del proyecto) con la contraseña de la base y, al final, `?sslmode=require&uselibpqcompat=true`: cifra la conexión como lo hace `libpq`, sin exigir la CA propia de Supabase.
+
+El secreto que CloudFront envía a la API se genera aleatorio y nunca se escribe a mano:
+
+```bash
+aws ssm put-parameter --type String --name /lexflow/prod/ORIGIN_VERIFY_SECRET --value "$(openssl rand -hex 32)"
+```
+
+Para rotar un secreto: volver a ejecutar el script (sobrescribe) y forzar un arranque nuevo de la Lambda (otro despliegue). En Git Bash, los comandos `aws` con rutas `/lexflow/...` necesitan `MSYS_NO_PATHCONV=1`, porque Git Bash las convierte en rutas de Windows.
 
 ### 5. Desplegar la infraestructura
 
 ```bash
 cd infra
-ALERT_EMAIL='<correo>' npx cdk deploy
+SUPABASE_URL='https://<proyecto>.supabase.co' ALERT_EMAIL='<correo>' npx cdk deploy
 ```
 
-`ALERT_EMAIL` solo se usa para el presupuesto y la alarma; no se guarda en el repositorio. Las salidas (`Outputs`) dan el dominio de CloudFront, los buckets y el id de la distribución. Hay que confirmar la suscripción de SNS desde el correo.
+`SUPABASE_URL` es la URL pública del proyecto (la API valida los inicios de sesión contra ella). `ALERT_EMAIL` solo se usa para el presupuesto y la alarma. Ninguno de los dos se guarda en el repositorio. Las salidas (`Outputs`) dan el dominio de CloudFront, los buckets y el id de la distribución. Hay que confirmar la suscripción de SNS desde el correo.
 
 ### 6. Migrar los datos (una vez)
 
 Con el PostgreSQL local todavía en marcha:
 
 1. `DATABASE_URL='<cadena-del-pooler-5432>' npx prisma migrate deploy` crea el esquema en Supabase.
-2. `infra/scripts/migrate-content.sh` exporta las tablas de contenido, las importa en Supabase y reescribe las URL.
+2. `TARGET_DATABASE_URL='<cadena-del-pooler-5432>' PUBLIC_URL='https://<dominio-cloudfront>' infra/scripts/migrate-content.sh` exporta las tablas de contenido, las importa en Supabase en una sola transacción y reescribe las URL. Al final muestra los recuentos: debe haber 0 usuarios y 0 URL locales.
 3. `aws s3 sync uploads/ s3://<bucket-media>/uploads/` sube los archivos.
 4. Iniciar sesión en la web publicada y dar el rol de administrador desde el editor SQL de Supabase: `update "User" set role = 'ADMIN' where email = '<correo>';`
 
@@ -187,9 +201,11 @@ aws cloudfront create-invalidation --distribution-id <id> --paths '/index.html' 
 
 ### 8. Automatizar (GitHub Actions)
 
+Los flujos están en `.github/workflows/deploy.yml` de cada repositorio. El rol se asume por OIDC y `mask-aws-account-id` oculta el número de cuenta en los logs.
+
 | Repositorio | Disparador | Qué hace | Secrets y variables |
 | ----------- | ---------- | -------- | ------------------- |
-| lexflow-api | push a `main` | `npm run check`, `cdk deploy` (construye la imagen), `cdk gc` | `AWS_DEPLOY_ROLE_ARN`, `ALERT_EMAIL` |
+| lexflow-api | push a `main` (y comprobación en cada pull request) | `npm run check`, `prisma migrate deploy` si existe `MIGRATION_DATABASE_URL`, `cdk deploy` (construye la imagen) | Secrets `AWS_DEPLOY_ROLE_ARN`, `ALERT_EMAIL`, `MIGRATION_DATABASE_URL` (opcional); variable `SUPABASE_URL` |
 | lexflow-web | push a `main` | `npm run check`, build, sync a S3, invalidación | `AWS_WEB_DEPLOY_ROLE_ARN`; variables `WEB_BUCKET`, `DISTRIBUTION_ID`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` |
 
 ### 9. Verificar
@@ -206,24 +222,35 @@ Detener y borrar el contenedor y el volumen de PostgreSQL local y la carpeta `up
 
 ## Seguimiento
 
+Desplegado el 2026-10-21/22 en `us-east-1`. URL pública: **https://d3qfy6z4ioifcs.cloudfront.net**.
+
 | Fase | Estado |
 | ---- | ------ |
 | Documento de infraestructura | Hecho |
-| 1. Cuenta, CLI y MFA | Pendiente |
-| 2. Supabase | Pendiente |
-| 3–5. CDK, secretos e infraestructura | Pendiente |
-| 6. Migración de datos | Pendiente |
-| 7. Web publicada | Pendiente |
-| 8. GitHub Actions | Pendiente |
-| 9. Verificación | Pendiente |
+| 1. Cuenta, CLI y MFA | Hecho: el trabajo diario usa un usuario IAM con MFA; el raíz (también con MFA) queda solo para emergencias |
+| 2. Supabase | Base lista. Pendiente: *URL Configuration* de Auth con el dominio de CloudFront |
+| 3–5. CDK, secretos e infraestructura | Hecho (stack `Lexflow`) |
+| 6. Migración de datos | Hecho: 12 colecciones, 189 palabras, 392 imágenes, 193 audios, 0 usuarios; 611 archivos en S3 |
+| 7. Web publicada | Hecho |
+| 8. GitHub Actions | Secrets y variables listos; se activa con el primer push a `main` |
+| 9. Verificación | Parcial: lo público funciona a 1280 y 390 px; falta el login real, el panel admin y «Eliminar mi cuenta» |
 | 10. Retirada de lo local | Pendiente |
+
+### Problemas encontrados y cómo se resolvieron
+
+- **Un antivirus con inspección HTTPS** (Avast) firmaba de nuevo el tráfico hacia AWS y la CLI lo rechazaba (`CERTIFICATE_VERIFY_FAILED`). Se añadieron excepciones para `*.amazonaws.com`, `*.aws.amazon.com` y `*.cloudfront.net` (en Avast, con el formato `*amazonaws.com*`).
+- **`ssm:GetParametersByPath`** se autoriza contra la ruta con su barra final: el permiso de la Lambda usa `parameter/lexflow/prod*`.
+- **Git Bash convierte `/lexflow/...` en rutas de Windows** en los argumentos de `aws`: `MSYS_NO_PATHCONV=1`.
+- **La cadena de conexión** debe llevar la contraseña sin los corchetes de `[YOUR-PASSWORD]`. `psql` (libpq) lee algunos caracteres especiales de una contraseña dentro de una URL de forma distinta que Node, así que `migrate-content.sh` descompone la URL con Node y pasa a `psql` variables `PG*`.
+- **`migrate-content.sh` necesita Docker Desktop en marcha**: lee el PostgreSQL local y ejecuta `psql` en un contenedor.
+- **Las sesiones de `aws login` duran 12 horas**: `aws login --profile lexflow` las renueva (en una ventana de incógnito si el navegador tiene abierta la sesión del raíz).
 
 ### Revisión periódica (mensual)
 
 - **Facturación → Bills y Free Tier**: el gasto debe seguir en céntimos y ningún servicio cerca de su límite gratuito.
 - **CloudWatch → Logs** de la Lambda: errores repetidos o arranques en frío largos.
 - **Supabase → Usage**: tamaño de la base (límite de 500 MB) y que el proyecto no esté pausado.
-- **ECR**: `cdk gc` ha dejado solo las imágenes en uso.
+- **ECR**: las imágenes antiguas se acumulan en el repositorio de assets de CDK; `cd infra && npx cdk gc --unstable=gc` borra las que ya no se usan.
 - **Créditos**: al acercarse el fin de los 6 meses, pasar la cuenta al plan de pago para que no se cierre. Con este diseño el coste sigue casi en cero.
 
 ### Retirar el despliegue

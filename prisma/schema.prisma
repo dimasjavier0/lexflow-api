@@ -1,6 +1,8 @@
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  // Compiled with tsc and run by plain Node in production, which needs the extensions.
+  importFileExtension = "js"
 }
 
 datasource db {

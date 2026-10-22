@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc --project tsconfig.json",
-    "start": "node dist/server.js",
+    "start": "node dist/main.js",
     "check": "tsc --noEmit --project tsconfig.json",
     "db:validate": "prisma validate",
     "db:generate": "prisma generate",
@@ -19,6 +19,8 @@
     "db:studio": "prisma studio"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1154.0",
+    "@aws-sdk/client-ssm": "^3.1154.0",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
     "cors": "^2.8.6",
