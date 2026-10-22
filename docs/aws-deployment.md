@@ -89,7 +89,7 @@ Las rutas de la SPA (`/profile`, `/learn/...`) las resuelve otra CloudFront Func
 - **CORS** cerrado (`CORS_ORIGINS=none`): la web y la API comparten dominio, así que ningún otro origen necesita acceso.
 - **URL de los archivos**: la Lambda no conoce el dominio de CloudFront al crearse (sería una dependencia circular), así que la CloudFront Function de `/api/*` lo envía en `x-public-origin`. La API solo se fía de esa cabecera cuando `x-origin-verify` es correcta.
 - **Cabeceras de seguridad** en CloudFront: HSTS, `X-Content-Type-Options`, `Referrer-Policy` y `X-Frame-Options`.
-- **Despliegue sin claves**: GitHub Actions asume roles por OIDC. El ARN del rol se guarda como *secret* del repositorio, así el identificador de la cuenta no aparece en el código ni en los logs públicos.
+- **Despliegue sin claves**: GitHub Actions asume roles por OIDC, solo desde el entorno `production`, que a su vez solo acepta la rama `main`. El ARN del rol se guarda como *secret* del repositorio, así el identificador de la cuenta no aparece en el código ni en los logs públicos.
 - **Cuenta**: el trabajo diario se hace con un usuario con MFA, no con el usuario raíz. El raíz también tiene MFA.
 - **Datos**: a Supabase solo se copian las tablas de contenido. El primer inicio de sesión en producción crea la cuenta de cero.
 
@@ -243,6 +243,7 @@ Desplegado el 2026-10-21/22 en `us-east-1`. URL pública: **https://d3qfy6z4ioif
 - **Git Bash convierte `/lexflow/...` en rutas de Windows** en los argumentos de `aws`: `MSYS_NO_PATHCONV=1`.
 - **La cadena de conexión** debe llevar la contraseña sin los corchetes de `[YOUR-PASSWORD]`. `psql` (libpq) lee algunos caracteres especiales de una contraseña dentro de una URL de forma distinta que Node, así que `migrate-content.sh` descompone la URL con Node y pasa a `psql` variables `PG*`.
 - **`migrate-content.sh` necesita Docker Desktop en marcha**: lee el PostgreSQL local y ejecuta `psql` en un contenedor.
+- **OIDC de GitHub con `environment: production`**: un job que declara un entorno presenta el sujeto `repo:<dueño>/<repo>:environment:production`, no el de la rama. Los roles confían en ese sujeto, y el entorno `production` de cada repositorio solo admite despliegues desde `main` (*deployment branch policy*).
 - **Las sesiones de `aws login` duran 12 horas**: `aws login --profile lexflow` las renueva (en una ventana de incógnito si el navegador tiene abierta la sesión del raíz).
 
 ### Revisión periódica (mensual)
