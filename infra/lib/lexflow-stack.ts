@@ -175,7 +175,9 @@ export class LexflowStack extends Stack {
         assumedBy: new iam.WebIdentityPrincipal(github.oidcProviderArn, {
           StringEquals: {
             "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-            "token.actions.githubusercontent.com:sub": `repo:${GITHUB_OWNER}/${repository}:ref:refs/heads/main`,
+            // Jobs that declare `environment: production` present this subject instead of the branch;
+            // the environment itself only accepts deployments from main (GitHub deployment branch policy).
+            "token.actions.githubusercontent.com:sub": `repo:${GITHUB_OWNER}/${repository}:environment:production`,
           },
         }),
       });
