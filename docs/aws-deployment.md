@@ -222,17 +222,28 @@ Detener y borrar el contenedor y el volumen de PostgreSQL local y la carpeta `up
 
 ## Seguimiento
 
+Desplegado el 2026-10-21/22 en `us-east-1`. URL pública: **https://d3qfy6z4ioifcs.cloudfront.net**.
+
 | Fase | Estado |
 | ---- | ------ |
 | Documento de infraestructura | Hecho |
-| 1. Cuenta, CLI y MFA | Pendiente |
-| 2. Supabase | Pendiente |
-| 3–5. CDK, secretos e infraestructura | Pendiente |
-| 6. Migración de datos | Pendiente |
-| 7. Web publicada | Pendiente |
-| 8. GitHub Actions | Pendiente |
-| 9. Verificación | Pendiente |
+| 1. Cuenta, CLI y MFA | Hecho: el trabajo diario usa un usuario IAM con MFA; el raíz (también con MFA) queda solo para emergencias |
+| 2. Supabase | Base lista. Pendiente: *URL Configuration* de Auth con el dominio de CloudFront |
+| 3–5. CDK, secretos e infraestructura | Hecho (stack `Lexflow`) |
+| 6. Migración de datos | Hecho: 12 colecciones, 189 palabras, 392 imágenes, 193 audios, 0 usuarios; 611 archivos en S3 |
+| 7. Web publicada | Hecho |
+| 8. GitHub Actions | Secrets y variables listos; se activa con el primer push a `main` |
+| 9. Verificación | Parcial: lo público funciona a 1280 y 390 px; falta el login real, el panel admin y «Eliminar mi cuenta» |
 | 10. Retirada de lo local | Pendiente |
+
+### Problemas encontrados y cómo se resolvieron
+
+- **Un antivirus con inspección HTTPS** (Avast) firmaba de nuevo el tráfico hacia AWS y la CLI lo rechazaba (`CERTIFICATE_VERIFY_FAILED`). Se añadieron excepciones para `*.amazonaws.com`, `*.aws.amazon.com` y `*.cloudfront.net` (en Avast, con el formato `*amazonaws.com*`).
+- **`ssm:GetParametersByPath`** se autoriza contra la ruta con su barra final: el permiso de la Lambda usa `parameter/lexflow/prod*`.
+- **Git Bash convierte `/lexflow/...` en rutas de Windows** en los argumentos de `aws`: `MSYS_NO_PATHCONV=1`.
+- **La cadena de conexión** debe llevar la contraseña sin los corchetes de `[YOUR-PASSWORD]`. `psql` (libpq) lee algunos caracteres especiales de una contraseña dentro de una URL de forma distinta que Node, así que `migrate-content.sh` descompone la URL con Node y pasa a `psql` variables `PG*`.
+- **`migrate-content.sh` necesita Docker Desktop en marcha**: lee el PostgreSQL local y ejecuta `psql` en un contenedor.
+- **Las sesiones de `aws login` duran 12 horas**: `aws login --profile lexflow` las renueva (en una ventana de incógnito si el navegador tiene abierta la sesión del raíz).
 
 ### Revisión periódica (mensual)
 
