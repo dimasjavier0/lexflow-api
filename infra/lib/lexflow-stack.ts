@@ -27,6 +27,11 @@ export const SECRETS_PATH = "/lexflow/prod/";
 export const ORIGIN_SECRET_PARAMETER = `${SECRETS_PATH}ORIGIN_VERIFY_SECRET`;
 
 const GITHUB_OWNER = "dimasjavier0";
+/**
+ * GitHub's numeric ids (public), which it now puts in the OIDC subject next to the names, so a
+ * deleted repository recreated under the same name cannot take over its deploy role.
+ */
+const GITHUB_IDS = { owner: 53241749, repositories: { "lexflow-api": 1426028920, "lexflow-web": 1426029064 } } as const;
 
 export type LexflowStackProps = StackProps & {
   /** Public Supabase project URL; the API validates sign-in tokens against it. */
@@ -168,7 +173,7 @@ export class LexflowStack extends Stack {
 
     // ---------- GitHub Actions (OIDC, no access keys) ----------
     const github = new iam.OidcProviderNative(this, "GitHubOidc", { url: "https://token.actions.githubusercontent.com", clientIds: ["sts.amazonaws.com"] });
-    const githubRole = (id: string, repository: string, description: string) =>
+    const githubRole = (id: string, repository: keyof typeof GITHUB_IDS.repositories, description: string) =>
       new iam.Role(this, id, {
         description,
         maxSessionDuration: Duration.hours(1),
@@ -177,7 +182,7 @@ export class LexflowStack extends Stack {
             "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
             // Jobs that declare `environment: production` present this subject instead of the branch;
             // the environment itself only accepts deployments from main (GitHub deployment branch policy).
-            "token.actions.githubusercontent.com:sub": `repo:${GITHUB_OWNER}/${repository}:environment:production`,
+            "token.actions.githubusercontent.com:sub": `repo:${GITHUB_OWNER}@${GITHUB_IDS.owner}/${repository}@${GITHUB_IDS.repositories[repository]}:environment:production`,
           },
         }),
       });

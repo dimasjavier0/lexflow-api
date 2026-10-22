@@ -243,7 +243,7 @@ Desplegado el 2026-10-21/22 en `us-east-1`. URL pública: **https://d3qfy6z4ioif
 - **Git Bash convierte `/lexflow/...` en rutas de Windows** en los argumentos de `aws`: `MSYS_NO_PATHCONV=1`.
 - **La cadena de conexión** debe llevar la contraseña sin los corchetes de `[YOUR-PASSWORD]`. `psql` (libpq) lee algunos caracteres especiales de una contraseña dentro de una URL de forma distinta que Node, así que `migrate-content.sh` descompone la URL con Node y pasa a `psql` variables `PG*`.
 - **`migrate-content.sh` necesita Docker Desktop en marcha**: lee el PostgreSQL local y ejecuta `psql` en un contenedor.
-- **OIDC de GitHub con `environment: production`**: un job que declara un entorno presenta el sujeto `repo:<dueño>/<repo>:environment:production`, no el de la rama. Los roles confían en ese sujeto, y el entorno `production` de cada repositorio solo admite despliegues desde `main` (*deployment branch policy*).
+- **OIDC de GitHub**: un job que declara `environment: production` presenta el sujeto del entorno, no el de la rama, y GitHub incluye además los identificadores numéricos (públicos) del dueño y del repositorio: `repo:<dueño>@<id>/<repo>@<id>:environment:production`. Así lo muestra CloudTrail en los `AssumeRoleWithWebIdentity` rechazados. Los roles confían exactamente en ese sujeto, de modo que un repositorio borrado y recreado con el mismo nombre no hereda el acceso. Además, el entorno `production` de cada repositorio solo admite despliegues desde `main` (*deployment branch policy*).
 - **Las sesiones de `aws login` duran 12 horas**: `aws login --profile lexflow` las renueva (en una ventana de incógnito si el navegador tiene abierta la sesión del raíz).
 
 ### Revisión periódica (mensual)
