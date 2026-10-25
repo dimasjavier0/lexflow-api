@@ -5,6 +5,7 @@ import { getCollection, listCollections, searchWords } from "./controllers/colle
 import { connectFacebook, listFriends } from "./controllers/friends.controller.js";
 import { getHealth } from "./controllers/health.controller.js";
 import { getLeaderboard } from "./controllers/leaderboard.controller.js";
+import { listLevels, summarizeLevelProgress } from "./controllers/levels.controller.js";
 import { deleteMe, getMe, getMyDashboard, updateMe } from "./controllers/me.controller.js";
 import { listProgress, summarizeProgress, updateProgress } from "./controllers/progress.controller.js";
 import { listDueReviews, submitReview } from "./controllers/review.controller.js";
@@ -39,6 +40,7 @@ app.use(rateLimit({ windowMs: 60_000, max: 300 }));
 app.get("/collections", listCollections);
 app.get("/collections/:slug", getCollection);
 app.get("/words/search", searchWords);
+app.get("/levels", listLevels);
 app.get("/me", requireAuth, getMe);
 app.patch("/me", requireAuth, updateMe);
 app.delete("/me", rateLimit({ windowMs: 60_000, max: 5 }), requireAuth, deleteMe);
@@ -49,6 +51,7 @@ app.post("/me/facebook", rateLimit({ windowMs: 60_000, max: 10 }), requireAuth, 
 app.put("/progress/:wordId", requireAuth, updateProgress);
 app.get("/progress", requireAuth, listProgress);
 app.get("/progress/summary", requireAuth, summarizeProgress);
+app.get("/progress/levels", requireAuth, summarizeLevelProgress);
 app.get("/reviews/due", requireAuth, listDueReviews);
 app.post("/reviews/:wordId", requireAuth, submitReview);
 app.get("/leaderboard", requireAuth, getLeaderboard);
