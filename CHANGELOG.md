@@ -11,6 +11,7 @@ Hasta la 0.6.0, la API y la web vivían juntas en el monorepo [LexFlow-1.0](http
 
 ### Added
 
+- `GET /levels`: los seis niveles CEFR con sus palabras y sus colecciones por tema, para el inicio por niveles. `GET /progress/levels`: cuántas palabras de cada nivel conoce el estudiante (aprendidas o dominadas), en total y por colección.
 - La API puede correr en AWS Lambda: imagen de contenedor (`Dockerfile`) con Piper para Linux y sus dos voces, imágenes y audios en S3 (`MEDIA_BUCKET`), URL públicas desde `PUBLIC_BASE_URL`, secretos leídos de SSM Parameter Store al arrancar y rechazo de las peticiones que no llegan por CloudFront (`ORIGIN_VERIFY_SECRET`).
 - Infraestructura de AWS como código (`infra/`, AWS CDK): CloudFront delante de la web, los archivos y la API, buckets S3 privados, la Lambda, una visita diaria que evita que Supabase pause la base, alertas de gasto y de errores, y roles de GitHub Actions sin claves. El flujo `deploy.yml` la despliega en cada push a `main`.
 - `infra/scripts/set-role.mjs` da o quita el rol de administrador a una cuenta de producción por su correo, sin mostrar la conexión a la base.

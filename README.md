@@ -94,6 +94,7 @@ En producción la API corre en AWS Lambda detrás de CloudFront, con los archivo
 
 - Validación del JWT de Supabase y sincronización de usuarios locales (Google y Facebook).
 - Colecciones y palabras publicadas, búsqueda con autocompletado y filtro por nivel CEFR. Los estudiantes solo ven palabras publicadas.
+- Catálogo por niveles para el inicio de la web: `GET /levels` (público) devuelve los seis niveles CEFR en orden, cada uno con su número de palabras distintas y las colecciones que tienen palabras de ese nivel, contando solo esas. `GET /progress/levels` (con sesión) devuelve las palabras de cada nivel que el estudiante conoce, en total y por colección. «Conocida» significa marcada como aprendida o dominada en el repaso, igual que en el perfil y en los amigos (`src/lib/known-words.ts`).
 - Progreso por palabra: querer aprender, no interesar y aprendida.
 - Borrado de la propia cuenta. Ver [Borrar la cuenta](#borrar-la-cuenta).
 - Repaso espaciado (SM-2), puntos, nivel y racha.

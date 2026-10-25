@@ -1,17 +1,13 @@
 import type { Request, Response } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma.js";
+import { knownWordsWhere } from "../lib/known-words.js";
 import { FacebookTokenError, FacebookUnavailableError, readFacebookAccount, type FacebookAccount } from "../services/facebook.js";
 
 const connectFacebookSchema = z.object({
   /** The Facebook token Supabase hands the web app right after a Facebook sign-in (`session.provider_token`). */
   accessToken: z.string().trim().min(20).max(2048),
 });
-
-/** Words a learner knows, counted as the profile counts them: marked as learned, or mastered in review. */
-const knownWordsWhere = {
-  OR: [{ status: "LEARNED" as const }, { status: "WANT_TO_LEARN" as const, stage: "MASTERED" as const }],
-};
 
 async function countKnownWords(userIds: string[]): Promise<Map<string, number>> {
   const rows = await prisma.userWordProgress.groupBy({ by: ["userId"], where: { userId: { in: userIds }, ...knownWordsWhere }, _count: { _all: true } });
