@@ -99,7 +99,7 @@ En producción la API corre en AWS Lambda detrás de CloudFront, con los archivo
 - Repaso espaciado (SM-2), puntos, nivel y racha.
 - Clasificación diaria, semanal y mensual, con filtro por país. Ver [Clasificación](#clasificación).
 - Amigos de Facebook con las palabras aprendidas de cada uno. Ver [Facebook y amigos](#facebook-y-amigos).
-- Panel admin (`/admin`, requiere `role = 'ADMIN'` en la tabla `User`):
+- Panel admin (`/admin`, requiere `role = 'ADMIN'` en la tabla `User`; se da con `infra/scripts/set-role.mjs`, ver [Roles y administradores](docs/aws-deployment.md#roles-y-administradores)):
   - Colecciones y palabras con imágenes, audios, videos, categoría gramatical, frecuencia, oraciones de ejemplo y palabras relacionadas.
   - Subida de imágenes, búsqueda en Pixabay y reparación de enlaces caducados.
   - Lista rápida e importación de varias listas, con vista previa antes de guardar.

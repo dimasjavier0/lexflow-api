@@ -186,7 +186,36 @@ Con el PostgreSQL local todavía en marcha:
 1. `DATABASE_URL='<cadena-del-pooler-5432>' npx prisma migrate deploy` crea el esquema en Supabase.
 2. `TARGET_DATABASE_URL='<cadena-del-pooler-5432>' PUBLIC_URL='https://<dominio-cloudfront>' infra/scripts/migrate-content.sh` exporta las tablas de contenido, las importa en Supabase en una sola transacción y reescribe las URL. Al final muestra los recuentos: debe haber 0 usuarios y 0 URL locales.
 3. `aws s3 sync uploads/ s3://<bucket-media>/uploads/` sube los archivos.
-4. Iniciar sesión en la web publicada y dar el rol de administrador desde el editor SQL de Supabase: `update "User" set role = 'ADMIN' where email = '<correo>';`
+4. Iniciar sesión en la web publicada y darse el rol de administrador (ver [Roles y administradores](#roles-y-administradores)).
+
+### Roles y administradores
+
+Cada cuenta tiene un rol en la columna `User.role`:
+
+| Rol | Qué puede hacer |
+| --- | --- |
+| `USER` (por defecto) | Todo lo del estudiante: lecciones, repaso, progreso, amigos, eliminar su cuenta |
+| `ADMIN` | Lo mismo y, además, el panel `/admin` y todas las rutas `/admin/*` de la API |
+
+- **Cómo se decide:** la cuenta se crea con `USER` la primera vez que alguien entra (`GET /me`). El middleware `requireAdmin` (`src/middlewares/require-admin.ts`) lee el rol de la base **en cada petición** a `/admin`, así que un cambio de rol vale desde la siguiente petición, sin cerrar sesión. La web muestra «Panel admin» cuando `GET /me` devuelve `role: "ADMIN"`.
+- **Ninguna pantalla permite hacerse administrador**, a propósito. El rol solo se cambia con acceso a la cuenta de AWS o al panel de Supabase.
+
+**Dar o quitar el rol** (la persona debe haber iniciado sesión al menos una vez):
+
+```bash
+aws login --profile lexflow --region us-east-1
+AWS_PROFILE=lexflow node infra/scripts/set-role.mjs <correo> ADMIN   # o USER para quitarlo
+```
+
+El script lee la cadena de conexión de SSM sin mostrarla y responde `<correo> is now ADMIN.`. Si el correo no existe, lo dice y no cambia nada.
+
+**Sin la CLI de AWS**, desde Supabase → **SQL Editor**:
+
+```sql
+update "User" set role = 'ADMIN' where lower(email) = lower('<correo>');
+```
+
+Después, recargar la web para que aparezca «Panel admin».
 
 ### 7. Desplegar la web
 
