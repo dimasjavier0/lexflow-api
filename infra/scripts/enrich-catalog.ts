@@ -2,7 +2,7 @@
 //
 //   covers   one Pixabay photo per topic collection that has no cover
 //   videos   a YouGlish link per word: real people saying it, played live (nothing is downloaded)
-//   audio    US pronunciation generated with Piper on this machine and uploaded to S3
+//   audio    US pronunciation generated with the Linux Piper of the API image (Docker) and uploaded to S3
 //   images   one Pixabay photo for each word marked visual; the rest show their collection's cover
 //
 // Every step only fills what is missing, so it can be stopped and run again. Pixabay is asked at a
@@ -10,6 +10,10 @@
 //
 //   AWS_PROFILE=lexflow MEDIA_BUCKET=<bucket> PUBLIC_BASE_URL=https://<domain> \
 //     npx tsx infra/scripts/enrich-catalog.ts covers videos audio images
+import { spawn } from "node:child_process";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { readCatalog, readTopics } from "./lib/catalog.js";
 import { useProduction } from "./lib/production.js";
 
@@ -21,14 +25,17 @@ if (!requested.length) {
   process.exit(1);
 }
 const PIXABAY_DELAY_MS = Number(process.env.PIXABAY_DELAY_MS ?? 1600);
-const AUDIO_CONCURRENCY = Number(process.env.AUDIO_CONCURRENCY ?? 4);
+const AUDIO_CONCURRENCY = Number(process.env.AUDIO_CONCURRENCY ?? 16);
+const AUDIO_BATCH = Number(process.env.AUDIO_BATCH ?? 400);
+/** The API image built from this repository's Dockerfile: `docker build -t lexflow-api:local .` */
+const PIPER_IMAGE = process.env.PIPER_IMAGE ?? "lexflow-api:local";
 const LIMIT = process.env.LIMIT ? Number(process.env.LIMIT) : Infinity;
 
 const { publicBaseUrl } = await useProduction();
 const { prisma } = await import("../../src/db/prisma.js");
 const { findPixabayImages } = await import("../../src/services/pixabay.js");
 const { storeRemoteImage } = await import("../../src/services/image-store.js");
-const { generatePiperAudio } = await import("../../src/services/piper.js");
+const { saveUpload, uploadUrl } = await import("../../src/services/file-store.js");
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const catalog = readCatalog();
@@ -90,24 +97,57 @@ async function stepVideos() {
   console.log(`Videos: ${created.count} YouGlish links added.`);
 }
 
+/**
+ * Synthesizes a batch with the Linux Piper inside the API's own image (the voice the Lambda uses),
+ * loading the model once for the whole batch: about 30 times faster than one Piper per word.
+ */
+async function synthesizeBatch(batch: Array<{ id: string; term: string }>, folder: string): Promise<Map<string, string>> {
+  const filenames = new Map(batch.map((word) => [word.id, `audio-${word.id}-${Date.now()}.wav`]));
+  const input = batch.map((word) => JSON.stringify({ text: word.term, output_file: `/out/${filenames.get(word.id)}` })).join("\n") + "\n";
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn("docker", ["run", "--rm", "-i", "--user", "root", "-v", `${folder}:/out`, "--entrypoint", "/opt/piper/piper", PIPER_IMAGE, "--model", "/opt/voices/en_US-amy-medium.onnx", "--json-input"], { stdio: ["pipe", "ignore", "pipe"] });
+    let stderr = "";
+    child.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
+    child.on("error", reject);
+    child.on("close", (code) => (code === 0 ? resolve() : reject(new Error(`Piper exited with ${code}: ${stderr.slice(-300)}`))));
+    child.stdin.end(input);
+  });
+  return filenames;
+}
+
 async function stepAudio() {
   const words = await topicWords({ audios: { none: {} } });
-  console.log(`Audio: ${words.length} words without pronunciation.`);
-  const tick = progress("audio", words.length);
+  console.log(`Audio: ${words.length} words without pronunciation (Piper in ${PIPER_IMAGE}, batches of ${AUDIO_BATCH}).`);
+  const tick = progress("audio", words.length, AUDIO_BATCH);
+  const folder = await mkdtemp(path.join(os.tmpdir(), "lexflow-audio-"));
   let failed = 0;
-  const queue = [...words];
-  await Promise.all(Array.from({ length: AUDIO_CONCURRENCY }, async () => {
-    for (let word = queue.shift(); word; word = queue.shift()) {
-      try {
-        const audio = await generatePiperAudio(publicBaseUrl, word.id, word.term, "US");
-        await prisma.audio.create({ data: { wordId: word.id, ...audio } });
-      } catch (error) {
-        failed += 1;
-        console.error(`  audio failed for "${word.term}": ${error instanceof Error ? error.message : error}`);
-      }
-      tick(failed ? `${failed} failed` : "");
+  try {
+    for (let start = 0; start < words.length; start += AUDIO_BATCH) {
+      const batch = words.slice(start, start + AUDIO_BATCH);
+      const filenames = await synthesizeBatch(batch, folder);
+      const rows: Array<{ wordId: string; url: string; provider: string; voice: string; accent: string; metadata: { text: string; filename: string } }> = [];
+      const queue = [...batch];
+      await Promise.all(Array.from({ length: AUDIO_CONCURRENCY }, async () => {
+        for (let word = queue.shift(); word; word = queue.shift()) {
+          const filename = filenames.get(word.id)!;
+          const file = path.join(folder, filename);
+          try {
+            await saveUpload(filename, await readFile(file), "audio/wav");
+            rows.push({ wordId: word.id, url: uploadUrl(publicBaseUrl, filename), provider: "piper", voice: "en_US", accent: "US", metadata: { text: word.term, filename } });
+          } catch (error) {
+            failed += 1;
+            console.error(`  audio failed for "${word.term}": ${error instanceof Error ? error.message : error}`);
+          } finally {
+            await rm(file, { force: true });
+          }
+          tick(failed ? `${failed} failed` : "");
+        }
+      }));
+      await prisma.audio.createMany({ data: rows });
     }
-  }));
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
 }
 
 async function stepImages() {

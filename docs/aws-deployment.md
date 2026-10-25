@@ -127,7 +127,7 @@ flowchart LR
   imp --> enr["enrich-catalog.ts"]
   enr --> v["videos: enlace YouGlish por palabra"]
   enr --> c["covers: una foto de Pixabay por colección"]
-  enr --> a["audio: Piper en local → S3"]
+  enr --> a["audio: Piper de la imagen Docker → S3"]
   enr --> i["images: Pixabay para las visuales;<br/>las abstractas, la portada de su colección"]
   v & c & a & i --> rev["revisión"]
   rev --> pub["publish-catalog.ts --yes"]
@@ -148,7 +148,7 @@ npx tsx infra/scripts/publish-catalog.ts                                 # infor
 - **Pixabay** se consulta despacio (`PIXABAY_DELAY_MS`, 1,6 s por defecto) y solo para las palabras visuales (~2.900), porque sus condiciones prohíben las descargas masivas. Cada imagen se guarda en S3 con su atribución.
 - **Palabras abstractas** («although», «ability»…): usan la portada de su colección como imagen (`metadata.collectionCover`). Se puede cambiar por otra desde el panel; el archivo de la portada no se borra mientras alguien lo use.
 - **Video**: un enlace de YouGlish por palabra, que reproduce en vivo a personas reales diciéndola; no se descarga ningún video.
-- **Audio**: pronunciación de EE. UU. generada con Piper en el equipo que ejecuta el script (`PIPER_PATH` y las voces de `.env`), subida a S3.
+- **Audio**: pronunciación de EE. UU. generada con el Piper de Linux de la propia imagen de la API (la misma voz que usa la Lambda), en lotes de 400 palabras con el modelo cargado una sola vez, y subida a S3 en paralelo. Unas 9 palabras por segundo, frente a 0,3 lanzando un Piper por palabra. Necesita Docker en marcha y la imagen construida: `docker build -t lexflow-api:local .` (o `PIPER_IMAGE` con otra etiqueta).
 - **Coste**: unos 0,6 GB más en S3 (audios WAV e imágenes), del orden de 0,02 $ al mes.
 - **Publicación**: todo entra como borrador. `publish-catalog.ts` sin argumentos cuenta lo que falta (audio, imagen, video); con `--yes` publica las palabras y las colecciones de los temas.
 
