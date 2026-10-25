@@ -19,7 +19,7 @@ src/
   db/prisma.ts    Cliente de Prisma
 prisma/           Schema, migraciones y seed
 docker/           PostgreSQL local
-infra/            Infraestructura de AWS (CDK en TypeScript) y script de migración de datos
+infra/            Infraestructura de AWS (CDK en TypeScript), catálogo de vocabulario y scripts de operación
 docs/             Modelo de datos y despliegue en AWS
 uploads/          Imágenes y audios guardados (local, no versionado)
 models/piper/     Voces de Piper (local, no versionado)
@@ -94,6 +94,7 @@ En producción la API corre en AWS Lambda detrás de CloudFront, con los archivo
 
 - Validación del JWT de Supabase y sincronización de usuarios locales (Google y Facebook).
 - Colecciones y palabras publicadas, búsqueda con autocompletado y filtro por nivel CEFR. Los estudiantes solo ven palabras publicadas.
+- Catálogo de vocabulario de 8.624 palabras de A1 a C2 en 27 temas, con imagen, pronunciación y video, cargado con los scripts de `infra/scripts/`. Ver [Catálogo de vocabulario](docs/aws-deployment.md#catálogo-de-vocabulario).
 - Catálogo por niveles para el inicio de la web: `GET /levels` (público) devuelve los seis niveles CEFR en orden, cada uno con su número de palabras distintas y las colecciones que tienen palabras de ese nivel, contando solo esas. `GET /progress/levels` (con sesión) devuelve las palabras de cada nivel que el estudiante conoce, en total y por colección. «Conocida» significa marcada como aprendida o dominada en el repaso, igual que en el perfil y en los amigos (`src/lib/known-words.ts`).
 - Progreso por palabra: querer aprender, no interesar y aprendida.
 - Borrado de la propia cuenta. Ver [Borrar la cuenta](#borrar-la-cuenta).

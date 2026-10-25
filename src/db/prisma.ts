@@ -4,9 +4,11 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client.js";
 import { Pool } from "pg";
 
+// A DATABASE_URL already in the environment (production secrets, or one set in the terminal)
+// wins over .env, so scripts aimed at production never fall back to the local database.
 dotenv.config({
   path: fileURLToPath(new URL("../../.env", import.meta.url)),
-  override: true,
+  override: false,
 });
 
 const databaseUrl = process.env.DATABASE_URL;
