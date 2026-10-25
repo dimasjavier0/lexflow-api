@@ -29,6 +29,7 @@ Este repositorio es uno de los dos de LexFlow: la web está en `lexflow-web`. Ha
    - `CHANGELOG.md`: una línea por cambio bajo `## [Unreleased]`, en `Added`, `Changed` o `Fixed`, en español y contando lo que nota quien usa la app.
    - `README.md`: si cambia una funcionalidad, un comando, una variable de entorno o la forma de arrancar el proyecto.
    - `.env.example`: si se añade una variable.
+   - Documentación del sistema: **cada funcionalidad nueva** o cambio de comportamiento se explica también en `docs/` (`aws-deployment.md` para infraestructura y operación, `data-model.md` para el esquema) y en la guía técnica privada del proyecto, que vive fuera del repositorio. Con un diagrama si añade un flujo, y sin secretos ni datos de la cuenta.
 5. **Commit** en la rama, con mensaje en inglés y formato Conventional Commits (`feat: ...`, `fix: ...`, `refactor: ...`, `docs: ...`, `chore: ...`). Commits pequeños y con un solo propósito.
 6. **Fusionar en `main`** cuando la función está completa y verificada: `git switch main && git merge --no-ff feat/<nombre>`. La rama ya fusionada se puede borrar.
 7. **Push** a `origin` solo cuando el usuario lo pida.
