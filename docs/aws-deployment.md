@@ -106,6 +106,52 @@ Las rutas de la SPA (`/profile`, `/learn/...`) las resuelve otra CloudFront Func
 - La carpeta `uploads/` se sube al bucket `media` con `aws s3 sync`, bajo el prefijo `uploads/`, así las rutas no cambian.
 - La API compone las URL nuevas con `PUBLIC_BASE_URL` (el dominio de CloudFront) en lugar del `Host` de la petición.
 
+## Catálogo de vocabulario
+
+El contenido educativo de producción sale de `infra/catalog/words.tsv`: **8.624 palabras de A1 a C2**, cada una con traducción, nivel, categoría gramatical, tema y la marca «visual». Las palabras y los niveles vienen de la CEFR-J Wordlist 1.5 y del Octanove Vocabulary Profile C1/C2 (CC BY-SA 4.0); las fuentes, las columnas y la licencia están en [infra/catalog/README.md](../infra/catalog/README.md).
+
+| Nivel | Palabras |
+| ----- | -------- |
+| A1 | 1.050 |
+| A2 | 1.238 |
+| B1 | 2.138 |
+| B2 | 2.413 |
+| C1 | 910 |
+| C2 | 875 |
+
+Cada tema de `topics.json` es una colección (27). Se reutilizan por nombre las que ya existían («House», «Family»…) y se crean las demás.
+
+```mermaid
+flowchart LR
+  tsv["words.tsv + topics.json"] --> imp["import-catalog.ts<br/>colecciones y palabras como borrador"]
+  imp --> enr["enrich-catalog.ts"]
+  enr --> v["videos: enlace YouGlish por palabra"]
+  enr --> c["covers: una foto de Pixabay por colección"]
+  enr --> a["audio: Piper de la imagen Docker → S3"]
+  enr --> i["images: Pixabay para las visuales;<br/>las abstractas, la portada de su colección"]
+  v & c & a & i --> rev["revisión"]
+  rev --> pub["publish-catalog.ts --yes"]
+```
+
+Los tres scripts se ejecutan desde la raíz del repositorio contra producción, con una sesión de AWS y las salidas del stack:
+
+```bash
+export AWS_PROFILE=lexflow MEDIA_BUCKET=<bucket-media> PUBLIC_BASE_URL=https://<dominio-cloudfront>
+npx tsx infra/scripts/import-catalog.ts                                  # borradores, idempotente
+npx tsx infra/scripts/enrich-catalog.ts videos covers audio images       # solo lo que falta
+npx tsx infra/scripts/inspect-production.ts                              # resumen, solo lectura
+npx tsx infra/scripts/publish-catalog.ts                                 # informe; con --yes publica
+```
+
+- **Producción sin riesgo para lo local**: `infra/scripts/lib/production.ts` carga los secretos de SSM antes de importar el código de la API, y `src/db/prisma.ts` ya no deja que `.env` sobrescriba un `DATABASE_URL` existente. Así un script nunca acaba escribiendo en la base local.
+- **Palabras ya existentes**: se reconocen sin distinguir mayúsculas («House» y «house» son la misma) y conservan sus datos; solo se enlazan a su tema.
+- **Pixabay** se consulta despacio (`PIXABAY_DELAY_MS`, 1,6 s por defecto) y solo para las palabras visuales (~2.900), porque sus condiciones prohíben las descargas masivas. Cada imagen se guarda en S3 con su atribución.
+- **Palabras abstractas** («although», «ability»…): usan la portada de su colección como imagen (`metadata.collectionCover`). Se puede cambiar por otra desde el panel; el archivo de la portada no se borra mientras alguien lo use.
+- **Video**: un enlace de YouGlish por palabra, que reproduce en vivo a personas reales diciéndola; no se descarga ningún video.
+- **Audio**: pronunciación de EE. UU. generada con el Piper de Linux de la propia imagen de la API (la misma voz que usa la Lambda), en lotes de 400 palabras con el modelo cargado una sola vez, y subida a S3 en paralelo. Unas 9 palabras por segundo, frente a 0,3 lanzando un Piper por palabra. Necesita Docker en marcha y la imagen construida: `docker build -t lexflow-api:local .` (o `PIPER_IMAGE` con otra etiqueta).
+- **Coste**: unos 0,6 GB más en S3 (audios WAV e imágenes), del orden de 0,02 $ al mes.
+- **Publicación**: todo entra como borrador. `publish-catalog.ts` sin argumentos cuenta lo que falta (audio, imagen, video); con `--yes` publica las palabras y las colecciones de los temas.
+
 ## Cambios en el código
 
 - **API**:
@@ -262,6 +308,7 @@ Desplegado el 2026-10-21/22 en `us-east-1`. URL pública: **https://d3qfy6z4ioif
 | 6. Migración de datos | Hecho: 12 colecciones, 189 palabras, 392 imágenes, 193 audios, 0 usuarios; 611 archivos en S3 |
 | 7. Web publicada | Hecho |
 | 8. GitHub Actions | Secrets y variables listos; se activa con el primer push a `main` |
+| Catálogo de vocabulario | 8.624 palabras cargadas como borrador; medios en curso; publicación pendiente de revisión |
 | 9. Verificación | Parcial: lo público funciona a 1280 y 390 px; falta el login real, el panel admin y «Eliminar mi cuenta» |
 | 10. Retirada de lo local | Pendiente |
 

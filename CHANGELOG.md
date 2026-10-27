@@ -11,6 +11,7 @@ Hasta la 0.6.0, la API y la web vivían juntas en el monorepo [LexFlow-1.0](http
 
 ### Added
 
+- Catálogo de vocabulario en `infra/catalog/`: 8.624 palabras de A1 a C2 (CEFR-J y Octanove C1/C2) con traducción al español, nivel, categoría y tema, repartidas en 27 colecciones. `import-catalog.ts` las carga como borrador, `enrich-catalog.ts` les añade enlace de YouGlish, pronunciación con Piper e imagen de Pixabay (las abstractas, la portada de su colección) y `publish-catalog.ts` las publica tras revisarlas.
 - `GET /levels`: los seis niveles CEFR con sus palabras y sus colecciones por tema, para el inicio por niveles. `GET /progress/levels`: cuántas palabras de cada nivel conoce el estudiante (aprendidas o dominadas), en total y por colección.
 - La API puede correr en AWS Lambda: imagen de contenedor (`Dockerfile`) con Piper para Linux y sus dos voces, imágenes y audios en S3 (`MEDIA_BUCKET`), URL públicas desde `PUBLIC_BASE_URL`, secretos leídos de SSM Parameter Store al arrancar y rechazo de las peticiones que no llegan por CloudFront (`ORIGIN_VERIFY_SECRET`).
 - Infraestructura de AWS como código (`infra/`, AWS CDK): CloudFront delante de la web, los archivos y la API, buckets S3 privados, la Lambda, una visita diaria que evita que Supabase pause la base, alertas de gasto y de errores, y roles de GitHub Actions sin claves. El flujo `deploy.yml` la despliega en cada push a `main`.
@@ -20,6 +21,7 @@ Hasta la 0.6.0, la API y la web vivían juntas en el monorepo [LexFlow-1.0](http
 
 ### Changed
 
+- El cliente de la base ya no deja que `.env` sustituya un `DATABASE_URL` que ya está en el entorno, así los scripts dirigidos a producción no pueden escribir por error en la base local.
 - Un `DATABASE_URL` puesto en la terminal tiene prioridad sobre el de `.env` en los comandos de Prisma, así `prisma migrate deploy` llega a la base que se indica.
 
 ### Fixed
