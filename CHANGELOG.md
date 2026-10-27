@@ -9,6 +9,8 @@ Hasta la 0.6.0, la API y la web vivían juntas en el monorepo [LexFlow-1.0](http
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-27
+
 ### Added
 
 - Catálogo de vocabulario en `infra/catalog/`: 8.624 palabras de A1 a C2 (CEFR-J y Octanove C1/C2) con traducción al español, nivel, categoría y tema, repartidas en 27 colecciones. `import-catalog.ts` las carga como borrador, `enrich-catalog.ts` les añade enlace de YouGlish, pronunciación con Piper e imagen de Pixabay (las abstractas, la portada de su colección) y `publish-catalog.ts` las publica tras revisarlas.
@@ -141,7 +143,8 @@ Primera versión como repositorio propio, lista para desplegarse por separado de
 - Datos: UUID, relación muchos-a-muchos entre colecciones y palabras, traducción española única e `isPublished`.
 - Prisma ORM 7: ESM, `prisma.config.ts`, cliente generado localmente y adaptador PostgreSQL; el `.env` de la raíz se carga con ruta absoluta.
 
-[Unreleased]: https://github.com/dimasjavier0/lexflow-api/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/dimasjavier0/lexflow-api/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/dimasjavier0/lexflow-api/releases/tag/v1.2.0
 [1.1.0]: https://github.com/dimasjavier0/lexflow-api/releases/tag/v1.1.0
 [1.0.0]: https://github.com/dimasjavier0/lexflow-api/releases/tag/v1.0.0
 [0.6.0]: https://github.com/dimasjavier0/lexflow-api/releases/tag/v0.6.0
